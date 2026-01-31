@@ -11,48 +11,8 @@ const Dashboard = () => {
     // Connect to BMS backend - adjust URL for Raspberry Pi
     const bmsData = useBMSData('http://localhost:5000');
 
-    // Dynamic Speed & Throttle Simulation
-    // Dynamic Speed Simulation
     const [speed, setSpeed] = useState(0);
     const [speedHistory, setSpeedHistory] = useState(new Array(20).fill(0));
-
-    // User requested specific Throttle Points for the Simulation Path
-    const THROTTLE_POINTS = [
-        { x: 0, y: 0.0 },
-        { x: 1, y: 2.0 },
-        { x: 2, y: 1.9 },
-        { x: 3, y: 2.5 },
-        { x: 4, y: 4.0 },
-        { x: 5, y: 4.4 }
-    ];
-
-    // Helper to interpolate Y value for a given X based on THROTTLE_POINTS
-    const getThrottleValue = (currentX) => {
-        for (let i = 0; i < THROTTLE_POINTS.length - 1; i++) {
-            const p1 = THROTTLE_POINTS[i];
-            const p2 = THROTTLE_POINTS[i + 1];
-            if (currentX >= p1.x && currentX <= p2.x) {
-                const ratio = (currentX - p1.x) / (p2.x - p1.x);
-                return p1.y + (p2.y - p1.y) * ratio;
-            }
-        }
-        return currentX >= 5 ? 4.4 : 0;
-    };
-
-    // Helper to get the path segments up to a specific X (to keep it as "one curve")
-    const getPathUpTo = (limitX) => {
-        const path = [];
-        for (let pt of THROTTLE_POINTS) {
-            if (pt.x < limitX) {
-                path.push(pt);
-            } else {
-                break;
-            }
-        }
-        path.push({ x: limitX, y: getThrottleValue(limitX) });
-        return path;
-    };
-
     const [throttleHistory, setThrottleHistory] = useState(new Array(20).fill(0));
 
     // Estimated DTE Logic
@@ -66,46 +26,63 @@ const Dashboard = () => {
         return () => clearInterval(interval);
     }, []);
 
-    // Non-linear characteristic curve (Piecewise) for 70-80% linearity
-    // Non-linear characteristic curve and helper removed
+    // USER SIMULATION HELPERS (For when not connected)
+    const THROTTLE_POINTS = [
+        { x: 0, y: 0.0 },
+        { x: 1, y: 2.0 },
+        { x: 2, y: 1.9 },
+        { x: 3, y: 2.5 },
+        { x: 4, y: 4.0 },
+        { x: 5, y: 4.4 }
+    ];
 
-    // Use real speed from bmsData if connected, otherwise use simulation
+    const getThrottleValue = (currentX) => {
+        for (let i = 0; i < THROTTLE_POINTS.length - 1; i++) {
+            const p1 = THROTTLE_POINTS[i];
+            const p2 = THROTTLE_POINTS[i + 1];
+            if (currentX >= p1.x && currentX <= p2.x) {
+                const ratio = (currentX - p1.x) / (p2.x - p1.x);
+                return p1.y + (p2.y - p1.y) * ratio;
+            }
+        }
+        return currentX >= 5 ? 4.4 : 0;
+    };
+
+    // Use real data from bmsData if connected
     useEffect(() => {
         if (bmsData.esp32_connected || bmsData.connected) {
             const currentSpeed = bmsData.speed_kmph || 0;
             setSpeed(currentSpeed);
             setSpeedHistory(prev => [...prev.slice(1), currentSpeed]);
 
-            // If we have throttle/voltage raw from ESP32, we could use it too
-            // For now, let's keep simulating throttle if not explicitly provided
+            const currentThrottle = bmsData.throttle || 0;
+            setThrottleHistory(prev => [...prev.slice(1), currentThrottle]);
         }
-    }, [bmsData.speed_kmph, bmsData.esp32_connected, bmsData.connected]);
+    }, [bmsData.speed_kmph, bmsData.throttle, bmsData.esp32_connected, bmsData.connected]);
 
+    // Simulation Loop (runs only if NOT connected)
     useEffect(() => {
         const startTime = Date.now();
-
         const interval = setInterval(() => {
             const now = Date.now();
             const totalElapsed = now - startTime;
 
-            // Only simulate speed if not connected to a real source
             if (!bmsData.esp32_connected && !bmsData.connected) {
+                // Simulate Speed
                 const speedPeriod = 3000;
                 const speedPhase = (totalElapsed % speedPeriod) / speedPeriod;
-                const newSpeed = 80 * Math.sin(speedPhase * Math.PI);
-                setSpeed(newSpeed);
-                setSpeedHistory(prev => [...prev.slice(1), newSpeed]);
+                const simSpeed = 80 * Math.sin(speedPhase * Math.PI);
+                setSpeed(simSpeed);
+                setSpeedHistory(prev => [...prev.slice(1), simSpeed]);
+
+                // Simulate Throttle
+                const throttlePeriod = 4000;
+                const cycleElapsed = totalElapsed % throttlePeriod;
+                const progress = cycleElapsed / throttlePeriod;
+                const pingPongX = (progress < 0.5 ? progress * 2 : 2 - progress * 2) * 5;
+                const simThrottle = getThrottleValue(pingPongX);
+                setThrottleHistory(prev => [...prev.slice(1), simThrottle]);
             }
-
-            // DYNAMIC THROTTLE: Sliding Window
-            const throttlePeriod = 4000;
-            const cycleElapsed = totalElapsed % throttlePeriod;
-            const progress = cycleElapsed / throttlePeriod;
-            const pingPongX = (progress < 0.5 ? progress * 2 : 2 - progress * 2) * 5;
-            const currentThrottle = getThrottleValue(pingPongX);
-
-            setThrottleHistory(prev => [...prev.slice(1), currentThrottle]);
-
         }, 100);
         return () => clearInterval(interval);
     }, [bmsData.esp32_connected, bmsData.connected]);
@@ -120,14 +97,13 @@ const Dashboard = () => {
                 {/* LEFT MAIN PANEL (Span 9) */}
                 <div className="col-span-9 flex flex-col gap-2 pr-6 border-r border-white/10 overflow-hidden">
 
-                    {/* Top Row: Title, Cards, Gauges - Grouped to prevent overlap */}
+                    {/* Top Row: Title, Cards, Gauges */}
                     <div className="flex items-end justify-between px-2 mb-2 relative z-20">
                         <div className="flex flex-col items-start gap-2">
                             <h1 className="text-3xl font-black italic tracking-wider text-white">E-BIKE DATA</h1>
 
-                            {/* Cards Row: Voltage/Current + Power - Equal Widths */}
+                            {/* Cards Row: Voltage/Current + Power */}
                             <div className="flex items-center gap-3 w-[26rem]">
-                                {/* 1. Voltage/Current Card */}
                                 <div className="glass-panel bg-black/40 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl flex-1 h-[7rem] flex flex-col justify-center">
                                     <LinearBar
                                         variant="dual-split"
@@ -142,7 +118,6 @@ const Dashboard = () => {
                                     />
                                 </div>
 
-                                {/* 2. Power Card - Matching Layout */}
                                 <div className="glass-panel bg-black/40 backdrop-blur-xl rounded-2xl p-4 border border-white/10 shadow-2xl flex-1 h-[7rem] flex flex-col justify-end">
                                     <div className="flex flex-col items-start mb-2 px-1">
                                         <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">POWER</span>
@@ -150,7 +125,6 @@ const Dashboard = () => {
                                             {(bmsData.power / 1000).toFixed(2)} KW
                                         </span>
                                     </div>
-
                                     <LinearBar
                                         allowGradient={true}
                                         scaleLabels={['0.0', '0.1', '0.2', '0.3']}
@@ -161,9 +135,7 @@ const Dashboard = () => {
                             </div>
                         </div>
 
-                        {/* Top Center Gauges Container - Larger and positioned right of left panel */}
                         <div className="glass-panel rounded-[1.8rem] px-8 py-6 flex items-center gap-6 bg-black/20 border border-white/10 shadow-lg">
-                            {/* SOC Gauge */}
                             <StatusGauge
                                 value={bmsData.soc}
                                 label="SOC"
@@ -175,7 +147,6 @@ const Dashboard = () => {
                                     { percent: 25, color: '#00ff9d' }
                                 ]}
                             />
-                            {/* SOH Gauge */}
                             <StatusGauge value={bmsData.soh} size={110} strokeWidth={10} label="SOH" color="#00ff9d" rotation={180} />
                         </div>
                     </div>
@@ -188,7 +159,6 @@ const Dashboard = () => {
                             <div className="text-white font-bold tracking-[0.3em] text-xs mb-2 z-10 w-full text-center mt-2 font-montserrat">
                                 MOTOR SPEED (KM/H)
                             </div>
-
                             <div className="flex-1 relative">
                                 <LineGraph
                                     data={speedHistory}
@@ -197,32 +167,27 @@ const Dashboard = () => {
                                     yLabels={['120', '90', '60', '30']}
                                     xLabels={['0', '2', '4', '6', '8', '10']}
                                 />
-
-                                {/* Speedometer - Centered/Bottom of Left Graph */}
                                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-30">
                                     <Speedometer speed={Math.round(speed)} size={180} />
                                 </div>
                             </div>
                         </div>
 
-                        {/* RIGHT: THROTTLE POSITION GRAPH - Reverted to Time vs Voltage */}
+                        {/* RIGHT: THROTTLE POSITION GRAPH (Now optimized for % data) */}
                         <div className="flex flex-col relative border border-white/40 rounded-br-[2rem] overflow-hidden bg-black/20">
                             <div className="text-white font-bold tracking-[0.3em] text-[10px] mb-2 z-10 w-full text-center mt-2 font-montserrat">
-                                THROTTLE POSITION (VOL/T)
+                                THROTTLE POSITION (%)
                             </div>
-
                             <div className="flex-1 relative">
                                 <LineGraph
                                     data={throttleHistory}
                                     color="#ff5e00"
-                                    maxVal={5}
-                                    yLabels={['5', '4', '3', '2', '1']}
+                                    maxVal={100}
+                                    yLabels={['100', '75', '50', '25', '0']}
                                     xLabels={['0', '2', '4', '6', '8', '10']}
                                 />
-
-                                {/* Throttle Value - Centered/Bottom of Right Graph */}
                                 <div className="absolute bottom-2 left-1/2 -translate-x-1/2 z-30">
-                                    <Speedometer value={throttleHistory[throttleHistory.length - 1]} unit="VOL/T" decimals={1} size={180} />
+                                    <Speedometer value={throttleHistory[throttleHistory.length - 1]} unit="%" decimals={0} size={180} />
                                 </div>
                             </div>
                         </div>
@@ -231,27 +196,14 @@ const Dashboard = () => {
 
                 {/* RIGHT SIDEBAR PANEL (Span 3) */}
                 <div className="col-span-3 flex flex-col relative h-full pl-6">
-                    {/* Darker background container */}
                     <div className="absolute inset-0 bg-[#0f0f0f] rounded-[2.5rem] -z-10 border border-white/5"></div>
-
                     <div className="flex flex-col h-full p-5 gap-4">
-
-                        {/* 
-                  TOP ACTIONS CONTAINER 
-                */}
                         <div className="w-full bg-[#141414] border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            {/* Pill container for Settings, Heart, Menu */}
                             <div className="bg-[#1a1a1a] rounded-full px-4 py-2 flex items-center gap-4 border border-white/5">
                                 <Settings size={20} className="text-gray-400" />
-
-                                {/* Pure White Heart Symbol */}
                                 <Heart size={20} className="text-white fill-white" />
-
-                                {/* 'Burger/Wind' style menu icon */}
                                 <AlignJustify size={20} className="text-gray-400 rotate-90" />
                             </div>
-
-                            {/* Circular D-Pad Control */}
                             <div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/5 flex items-center justify-center relative">
                                 <div className="grid grid-cols-2 gap-[2px]">
                                     <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
@@ -262,10 +214,7 @@ const Dashboard = () => {
                             </div>
                         </div>
 
-                        {/* Combined Single Long Card (Temp + Modes + DTE) */}
                         <div className="flex-1 bg-[#141414] rounded-3xl border border-white/40 flex flex-col relative overflow-hidden">
-
-                            {/* Temperature Section - First 3 Sensors */}
                             <div className="flex-1 flex flex-col items-center justify-center p-4 border-b border-white/5 w-full">
                                 <div className="text-[10px] text-white font-bold tracking-widest uppercase mb-3 text-center w-full font-montserrat">TEMPERATURE</div>
                                 <div className="flex flex-col gap-2 w-full px-2">
@@ -286,7 +235,6 @@ const Dashboard = () => {
                                 </div>
                             </div>
 
-                            {/* Drive Mode Section */}
                             <div className="flex-1 flex flex-col justify-center items-center p-2 bg-[#141414]/50 border-b border-white/5 relative group">
                                 <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase mb-1">DRIVE MODE</span>
                                 <div className="flex flex-col items-center">
@@ -308,12 +256,11 @@ const Dashboard = () => {
                                 </div>
                             </div>
 
-                            {/* Estimated DTE Section */}
                             <div className="flex-1 flex flex-col justify-center items-center p-2 bg-[#141414]/50 relative group">
                                 <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase mb-1">EST. DISTANCE</span>
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-3xl font-black italic text-white tracking-wider">
-                                        {Math.round(bmsData.soc + dteOffsets[dteIndex])}
+                                        {Math.round(bmsData.soc + (dteOffsets[dteIndex] || 0))}
                                     </span>
                                     <span className="text-xs font-bold text-neon-orange">KM</span>
                                 </div>
@@ -326,19 +273,5 @@ const Dashboard = () => {
         </div>
     );
 };
-
-// Updated NavButton - Accept className for width override
-const NavButton = ({ icon, text, active, className = "" }) => (
-    <button className={`h-11 px-6 rounded-full flex items-center justify-center gap-2 transition-all duration-300 border
-    ${className}
-    ${!className.includes('w-') ? 'min-w-[4rem]' : ''} 
-    ${active
-            ? 'bg-white text-black border-white shadow-[0_0_15px_rgba(255,255,255,0.4)] scale-105'
-            : 'bg-[#1a1a1a]/50 text-white border-white/10 hover:border-white/30 hover:bg-[#1a1a1a]'}
-  `}>
-        {icon}
-        {text && <span className="text-[11px] font-bold tracking-[0.15em]">{text}</span>}
-    </button>
-);
 
 export default Dashboard;
