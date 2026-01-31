@@ -24,7 +24,8 @@ export const useBMSData = (serverUrl = 'http://localhost:5000') => {
         last_update: 0,
         connected: false,
         speed_kmph: 0,
-        speed_mode: 'ECONOMY',
+        throttle: 0,
+        speed_mode: 'MED',
         esp32_connected: false,
         pi_battery: {
             percent: 0,
@@ -91,3 +92,4 @@ export const useBMSData = (serverUrl = 'http://localhost:5000') => {
 };
 
 export default useBMSData;
+

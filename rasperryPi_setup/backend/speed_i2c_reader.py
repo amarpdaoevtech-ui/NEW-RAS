@@ -14,7 +14,7 @@ class SpeedI2CReader:
         self.bus = None
         self.last_seq = None
         self.last_mode = None
-        self.mode_names = {0: "POWER", 1: "ECONOMY", 2: "SPORTS"} # Updated based on user request: 0,1,2 = power, economy, sports
+        self.mode_names = {0: "LOW", 1: "MED", 2: "HIGH"} # Updated based on user script: 0=LOW, 1=MED, 2=HIGH
         self.last_data = {
             "speed_kmph": 0.0,
             "mode": "ECONOMY",
@@ -71,11 +71,17 @@ class SpeedI2CReader:
             if speed > 100 or speed < 0:
                 speed = 0.0
             
+            # Throttle handling
+            throttle = float(d.get('th', 0.0))
+            if throttle < 0: throttle = 0.0
+            if throttle > 100: throttle = 100.0
+
             mode_idx = d.get('mode', 1)
             mode_str = self.mode_names.get(mode_idx, f"UNK({mode_idx})")
             
             self.last_data = {
                 "speed_kmph": round(speed, 1),
+                "throttle": round(throttle, 1),
                 "mode": mode_str,
                 "mode_index": mode_idx,
                 "voltage": d.get('v', 0.0),
@@ -94,3 +100,4 @@ class SpeedI2CReader:
     def close(self):
         if self.bus:
             self.bus.close()
+

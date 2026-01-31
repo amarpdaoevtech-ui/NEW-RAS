@@ -312,6 +312,7 @@ bms_data = {
     "speed_kmph": 0.0,
     "speed_raw": 0,
     "speed_mode": "Low",
+    "throttle": 0.0,
     "brake": 0,
     "cruise": 0,
     "undervoltage": 0,
@@ -545,12 +546,13 @@ def i2c_reader_thread():
             if spd_data:
                 with data_lock:
                     bms_data["speed_kmph"] = spd_data["speed_kmph"]
+                    bms_data["throttle"] = spd_data.get("throttle", 0.0)
                     bms_data["speed_mode"] = spd_data["mode"]
                     bms_data["brake"] = spd_data["brake"]
                     bms_data["esp32_connected"] = True
                     bms_data["last_update"] = time.time()
                 
-                # Emit update for speed
+                # Emit update for speed/throttle
                 socketio.emit('bms_update', bms_data)
             
             # Read Battery Data (less frequent)
@@ -672,3 +674,4 @@ if __name__ == '__main__':
     print("=" * 60)
     
     socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
+
