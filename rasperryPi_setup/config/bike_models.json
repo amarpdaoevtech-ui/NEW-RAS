@@ -10,11 +10,11 @@
                 "/dev/ttyS0"
             ],
             "parameters": {
-                "max_voltage": 60.0,
-                "max_current": 50.0,
-                "max_power": 3000.0,
-                "max_speed": 60,
-                "max_temperature": 80,
+                "max_voltage": 79.0,
+                "max_current": 40.0,
+                "max_power": 3160.0,
+                "max_speed": 70,
+                "max_temperature": 70,
                 "battery_capacity": 30,
                 "num_temp_sensors": 5
             },

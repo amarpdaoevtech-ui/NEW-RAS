@@ -20,6 +20,8 @@ from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 from speed_i2c_reader import SpeedI2CReader
 from battery_i2c_reader import BatteryI2CReader
+from dte_calculator_enhanced import EnhancedDTECalculator
+from odometer import PersistentOdometer
 
 # Load environment variables
 load_dotenv()
@@ -275,6 +277,19 @@ class Database:
 # Initialize database
 db = Database()
 
+# Initialize Enhanced DTE Calculator (Industry-competitive algorithms)
+# Battery capacity for 703-O: 79V × 30Ah = 2370 Wh
+dte_calc = EnhancedDTECalculator(
+    db_path=str(Path(__file__).parent.parent / os.getenv('DB_PATH', 'data/bms_data.db')),
+    battery_capacity_wh=2370,  # 79V × 30Ah
+    nominal_voltage=79.0
+)
+
+# Initialize Persistent Odometer
+odometer = PersistentOdometer(
+    storage_path=str(Path(__file__).parent / 'data' / 'odometer.json')
+)
+
 # ================= LOGGING SETUP =================
 log_dir = Path(__file__).parent.parent / 'logs'
 log_dir.mkdir(parents=True, exist_ok=True)
@@ -323,7 +338,14 @@ bms_data = {
         "percent": 0,
         "state": "Unknown",
         "voltage_mv": 0
-    }
+    },
+    # DTE Data (Enhanced)
+    "dte": 0.0,
+    "dte_avg_consumption": 0.0,
+    "dte_confidence": "LOW",  # NEW: Confidence level (LOW, MEDIUM, HIGH)
+    "regen_active": False,
+    "session_id": None,
+    "total_distance": 0.0
 }
 data_lock = threading.Lock()
 
@@ -397,7 +419,7 @@ def decode_dao_bms_payload(payload: bytes):
     rem_time = payload[14] * 0.1
 
     num_sensors = config.get_parameters()['num_temp_sensors']
-    temps = [(s8(payload[i]) + bms_config['temp_offset']) for i in range(15, 15 + num_sensors)]
+    temps = [(s8(payload[i]) - 40) for i in range(15, 15 + num_sensors)]
     avg_temp = sum(temps) / len(temps) if temps else 0
     status_desc = decode_bms_status(status)
     
@@ -420,12 +442,37 @@ def decode_dao_bms_payload(payload: bytes):
         bms_data["last_update"] = time.time()
         bms_data["connected"] = True
 
-    logger.info(f"BMS UPDATE: V={voltage:.1f}V I={dchg_cur:.1f}A P={power:.1f}W SoC={soc}% SoH={health}% Temp={avg_temp:.1f}°C")
+    logger.info(f"BMS UPDATE: V={voltage:.1f}V I={dchg_cur:.1f}A P={power:.1f}W SoC={soc}% SoH={health}% Temp={avg_temp:.1f}°C Speed={bms_data.get('speed_kmph', 0.0):.1f}km/h")
     
     # Log to database
     db.log_data(bms_data)
     
-    # Emit to WebSocket clients
+    # ========== DTE: record sensor inputs (calculation moved to timed task) ==========
+    # Detect regen braking (negative current)
+    regen_active = dte_calc.detect_regen_braking(dchg_cur)
+
+    # Log sensor reading for later DTE calculation (do not calculate DTE here)
+    speed_kmph = bms_data.get("speed_kmph", 0.0)
+    throttle_pos = bms_data.get("throttle", 0.0)
+
+    dte_calc.detect_ride_status(speed_kmph, throttle_pos)
+
+    dte_calc.log_sensor_reading(
+        voltage_v=voltage,
+        current_a=dchg_cur,
+        soc_percent=soc,
+        soh_percent=health,
+        temperature_c=avg_temp,
+        speed_kmph=speed_kmph,
+        throttle_pos=throttle_pos,
+        distance_km=bms_data.get("total_distance", 0.0),
+        mode=bms_data.get("speed_mode", "medium").lower()
+    )
+
+    # Update regen flag and emit a lightweight update (DTE will be computed on timer)
+    with data_lock:
+        bms_data["regen_active"] = regen_active
+
     socketio.emit('bms_update', bms_data)
 
 def find_working_port():
@@ -539,21 +586,65 @@ def i2c_reader_thread():
     speed_reader = SpeedI2CReader()
     battery_reader = BatteryI2CReader()
     
+    last_loop_time = time.time()
+    last_valid_i2c = time.time()
+    last_emit_time = 0  # Track last socketio emit time for continuous updates
+    
     while True:
         try:
+            current_time = time.time()
+            time_delta = current_time - last_loop_time
+            last_loop_time = current_time
+            
             # Read Speed Data
             spd_data = speed_reader.read_data()
+            should_emit = False  # Flag to control when to emit
+            
             if spd_data:
+                # NEW DATA RECEIVED
+                last_valid_i2c = current_time
+                speed_kmph = spd_data["speed_kmph"]
+                
+                # Update persistent odometer
+                total_distance = odometer.update(speed_kmph, time_delta)
+                
                 with data_lock:
-                    bms_data["speed_kmph"] = spd_data["speed_kmph"]
+                    bms_data["speed_kmph"] = speed_kmph
                     bms_data["throttle"] = spd_data.get("throttle", 0.0)
                     bms_data["speed_mode"] = spd_data["mode"]
                     bms_data["brake"] = spd_data["brake"]
                     bms_data["esp32_connected"] = True
                     bms_data["last_update"] = time.time()
+                    bms_data["total_distance"] = round(total_distance, 2)  # Persist distance
                 
-                # Emit update for speed/throttle
+                # ✅ Log speed activity for debugging
+                if speed_kmph > 0:
+                    logger.debug(f"SPD_SYNC: {speed_kmph} kmh | ODO: {total_distance} km")
+                
+                should_emit = True  # Always emit when we get new data
+                
+            else:
+                # NO NEW DATA (duplicate sequence number or no I2C data)
+                # ✅ PATIENT TIMEOUT: Only reset to 0 if no data for 10 seconds
+                if current_time - last_valid_i2c > 10.0:
+                    with data_lock:
+                        if bms_data["speed_kmph"] > 0:
+                            logger.warning("Speed signal lost! Resetting to 0.")
+                        bms_data["speed_kmph"] = 0.0
+                        bms_data["throttle"] = 0.0
+                        bms_data["esp32_connected"] = False
+                    
+                    should_emit = True  # Emit the reset state
+                
+                # ✅ CRITICAL FIX: Even if we got duplicate sequence numbers,
+                # emit the current speed/throttle values every 100ms to keep display updated
+                elif current_time - last_emit_time >= 0.1:
+                    should_emit = True  # Emit current state for continuous display
+            
+            # Emit socketio update if needed
+            if should_emit:
                 socketio.emit('bms_update', bms_data)
+                last_emit_time = current_time
             
             # Read Battery Data (less frequent)
             if int(time.time()) % 2 == 0:
@@ -572,7 +663,7 @@ def i2c_reader_thread():
         except Exception as e:
             logger.error(f"I2C Reader Error: {e}")
             
-        time.sleep(0.05) # Loop every 50ms as per user request
+        time.sleep(0.1) # Loop every 100ms (reduced from 50ms to match ESP32 update rate)
 
 # ================= REST API ENDPOINTS =================
 
@@ -612,6 +703,66 @@ def health_check():
             "bike_model": config.model_name
         })
 
+@app.route('/api/dte', methods=['GET'])
+def get_dte():
+    """Get Distance-to-Empty estimation and consumption data (Enhanced)"""
+    with data_lock:
+        return jsonify({
+            "dte": bms_data.get("dte", 0),
+            "dte_avg_consumption": bms_data.get("dte_avg_consumption", 0),
+            "dte_confidence": bms_data.get("dte_confidence", "LOW"),  # NEW
+            "regen_active": bms_data.get("regen_active", False),
+            "total_distance": bms_data.get("total_distance", 0),  # NEW
+            "soc": bms_data.get("soc", 0),
+            "soh": bms_data.get("soh", 0),
+            "temperature": bms_data.get("temperature", 0),
+            "voltage": bms_data.get("voltage", 0),
+            "current": bms_data.get("current", 0),
+            "speed_kmph": bms_data.get("speed_kmph", 0)
+        })
+
+@app.route('/api/dte/session', methods=['GET'])
+def get_dte_session():
+    """Get current DTE session statistics"""
+    stats = dte_calc.get_session_stats()
+    return jsonify(stats)
+
+@app.route('/api/dte/session/start', methods=['POST'])
+def start_dte_session():
+    """Start a new DTE calculation session"""
+    try:
+        initial_soc = request.json.get('initial_soc', bms_data.get('soc', 100))
+        bike_model = request.json.get('bike_model', config.model_name)
+        riding_mode = request.json.get('mode', 'medium')
+        
+        session_id = dte_calc.start_session(initial_soc, bike_model, riding_mode)
+        
+        return jsonify({
+            "success": True,
+            "session_id": session_id,
+            "initial_soc": initial_soc
+        })
+    except Exception as e:
+        logger.error(f"Error starting DTE session: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
+@app.route('/api/dte/session/end', methods=['POST'])
+def end_dte_session():
+    """End current DTE session and get summary"""
+    try:
+        final_soc = request.json.get('final_soc', bms_data.get('soc', 0))
+        final_temperature = request.json.get('temperature', bms_data.get('temperature', None))
+        
+        summary = dte_calc.end_session(final_soc, final_temperature)
+        
+        return jsonify({
+            "success": True,
+            "summary": summary
+        })
+    except Exception as e:
+        logger.error(f"Error ending DTE session: {e}")
+        return jsonify({"success": False, "error": str(e)}), 400
+
 # ================= WEBSOCKET EVENTS =================
 
 @socketio.on('connect')
@@ -640,6 +791,56 @@ def cleanup_task():
         time.sleep(86400)  # Run daily
         db.cleanup_old_data()
 
+
+def dte_update_task():
+    """Timed DTE calculation task with enhanced algorithm support."""
+    interval = int(os.getenv('DTE_CALC_INTERVAL', 3))
+    logger.info(f"Starting Enhanced DTE update task, interval={interval}s")
+    while True:
+        try:
+            with data_lock:
+                soc = bms_data.get('soc', 0)
+                soh = bms_data.get('soh', 100)
+                temp = bms_data.get('temperature', 0)
+                speed = bms_data.get('speed_kmph', 0.0)
+                throttle = bms_data.get('throttle', 0.0)  # NEW: Pass throttle for instant power
+                mode = bms_data.get('speed_mode', 'medium').lower()
+
+            # Calculate DTE using the enhanced calculator
+            # Returns: (dte_km, consumption, regen_active, confidence)
+            result = dte_calc.calculate_dte(
+                soc_percent=soc,
+                soh_percent=soh,
+                temperature_c=temp,
+                speed_kmph=speed,
+                throttle_pct=throttle,  # NEW: Instant power factor
+                mode=mode
+            )
+            
+            # Handle both old 3-tuple and new 4-tuple returns for compatibility
+            if len(result) == 4:
+                dte_km, avg_consumption, regen, confidence = result
+            else:
+                dte_km, avg_consumption, regen = result
+                confidence = 'MEDIUM'
+
+            with data_lock:
+                bms_data['dte'] = round(dte_km, 2)
+                bms_data['dte_avg_consumption'] = round(avg_consumption, 2)
+                bms_data['regen_active'] = regen
+                bms_data['dte_confidence'] = confidence  # NEW: Confidence level
+                bms_data['session_id'] = dte_calc.session_id
+                bms_data['total_distance'] = round(dte_calc.total_distance, 2)
+
+            # Emit DTE update to clients
+            socketio.emit('bms_update', bms_data)
+
+        except Exception as e:
+            logger.error(f"DTE update task error: {e}")
+
+        time.sleep(interval)
+
+
 # ================= MAIN =================
 
 if __name__ == '__main__':
@@ -662,6 +863,10 @@ if __name__ == '__main__':
     # Start I2C reader thread (Speed & Pi Battery)
     i2c_thread = threading.Thread(target=i2c_reader_thread, daemon=True)
     i2c_thread.start()
+
+    # Start timed DTE update task (computes DTE every few seconds)
+    dte_thread = threading.Thread(target=dte_update_task, daemon=True)
+    dte_thread.start()
     
     # Start Flask server
     host = os.getenv('BACKEND_HOST', '0.0.0.0')
@@ -674,4 +879,3 @@ if __name__ == '__main__':
     print("=" * 60)
     
     socketio.run(app, host=host, port=port, debug=debug, allow_unsafe_werkzeug=True)
-
