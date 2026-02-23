@@ -14,17 +14,9 @@ const Dashboard = () => {
     const [speed, setSpeed] = useState(0);
     const [speedHistory, setSpeedHistory] = useState(new Array(20).fill(0));
     const [throttleHistory, setThrottleHistory] = useState(new Array(20).fill(0));
-
-    // Estimated DTE Logic
-    const [dteIndex, setDteIndex] = useState(0);
-    const dteOffsets = [1, -2, 1, 2];
-
-    useEffect(() => {
-        const interval = setInterval(() => {
-            setDteIndex(prev => (prev + 1) % dteOffsets.length);
-        }, 20000); // Change every 20s
-        return () => clearInterval(interval);
-    }, []);
+    const [dte, setDte] = useState(0);
+    const [dteAvgConsumption, setDteAvgConsumption] = useState(0);
+    const [regenActive, setRegenActive] = useState(false);
 
     // USER SIMULATION HELPERS (For when not connected)
     const THROTTLE_POINTS = [
@@ -57,8 +49,19 @@ const Dashboard = () => {
 
             const currentThrottle = bmsData.throttle || 0;
             setThrottleHistory(prev => [...prev.slice(1), currentThrottle]);
+
+            // Update DTE from backend
+            if (bmsData.dte !== undefined) {
+                setDte(bmsData.dte);
+            }
+            if (bmsData.dte_avg_consumption !== undefined) {
+                setDteAvgConsumption(bmsData.dte_avg_consumption);
+            }
+            if (bmsData.regen_active !== undefined) {
+                setRegenActive(bmsData.regen_active);
+            }
         }
-    }, [bmsData.speed_kmph, bmsData.throttle, bmsData.esp32_connected, bmsData.connected]);
+    }, [bmsData.speed_kmph, bmsData.throttle, bmsData.esp32_connected, bmsData.connected, bmsData.dte, bmsData.dte_avg_consumption, bmsData.regen_active]);
 
     // Simulation Loop (runs only if NOT connected)
     useEffect(() => {
@@ -260,11 +263,29 @@ const Dashboard = () => {
                                 <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase mb-1">EST. DISTANCE</span>
                                 <div className="flex items-baseline gap-1">
                                     <span className="text-3xl font-black italic text-white tracking-wider">
-                                        {Math.round(bmsData.soc + (dteOffsets[dteIndex] || 0))}
+                                        {dte > 0 ? Math.round(dte) : '--'}
                                     </span>
                                     <span className="text-xs font-bold text-neon-orange">KM</span>
                                 </div>
                                 <div className="text-[8px] text-gray-600 mt-1">To Empty</div>
+
+                                {/* Total Distance (Odometer) */}
+                                <div className="mt-2 pt-1 border-t border-white/10 w-full flex justify-between px-4 items-center">
+                                    <span className="text-[8px] text-gray-500 font-bold uppercase">ODO</span>
+                                    <div className="flex items-baseline gap-1">
+                                        <span className="text-sm font-bold text-white">
+                                            {bmsData.total_distance ? bmsData.total_distance.toFixed(1) : '0.0'}
+                                        </span>
+                                        <span className="text-[8px] text-neon-cyan font-bold">KM</span>
+                                    </div>
+                                </div>
+
+                                {dteAvgConsumption > 0 && (
+                                    <div className="text-[8px] text-gray-500 mt-2 flex gap-1 items-center justify-center w-full">
+                                        <span>{dteAvgConsumption.toFixed(1)} Wh/km</span>
+                                        {regenActive && <span className="text-neon-cyan font-bold">🔋 REGEN</span>}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>
