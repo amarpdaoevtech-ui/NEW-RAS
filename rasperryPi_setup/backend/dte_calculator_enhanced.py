@@ -83,9 +83,9 @@ class EnhancedDTECalculator:
         self.last_dte_update_time = None
         self.last_dte_value = 0
         
-        # ✅ NEW: Enhanced smoothing parameters (More stable)
-        self.dte_smoothing_alpha = 0.05  # Very slow smoothing to prevent jumps
-        self.max_rate_change_km = 0.1    # Max 100m change per update cycle
+        # ✅ FIXED: Relaxed smoothing parameters (was too aggressive, DTE barely moved)
+        self.dte_smoothing_alpha = 0.20  # Moderate smoothing (was 0.05, way too slow)
+        self.max_rate_change_km = 0.5    # Max 500m change per update cycle (was 0.1, too tight)
         
         # Track last consumption log time to avoid duplicate entries
         self.last_consumption_log_time = None
@@ -347,6 +347,8 @@ class EnhancedDTECalculator:
         Recent behavior predicts next km best, but we need longer-term trends
         
         Default weights: 1km: 50%, 5km: 30%, 15km: 20%
+        
+        ✅ FIX: Falls back to in-memory session data when DB has too few points
         """
         if window_weights is None:
             window_weights = {1: 0.50, 5: 0.30, 15: 0.20}
@@ -394,9 +396,18 @@ class EnhancedDTECalculator:
             if total_weight_used > 0:
                 # Normalize by total weight used
                 return weighted_consumption / total_weight_used
-            else:
-                # No data available, return mode base
-                return self.MODE_BASE.get('medium', 37.5)
+            
+            # ✅ FIX: Fallback to in-memory session data instead of always returning mode base
+            # This handles early-ride when DB has fewer than 2 consumption entries
+            if self.total_distance > 0.2 and self.total_energy_used > 0:
+                net_energy = self.total_energy_used - self.total_energy_regenerated
+                session_consumption = max(net_energy / self.total_distance, 5.0)
+                logger.debug(f"Using in-memory session consumption: {session_consumption:.2f} Wh/km "
+                           f"(dist={self.total_distance:.2f}km, energy={net_energy:.2f}Wh)")
+                return session_consumption
+            
+            # No data available at all, return mode base
+            return self.MODE_BASE.get('medium', 37.5)
                 
         except Exception as e:
             logger.error(f"❌ Error in segmented consumption: {e}")
@@ -551,11 +562,11 @@ class EnhancedDTECalculator:
             
             self.last_power_timestamp = current_timestamp
             
-            # Log consumption entry if distance threshold reached (every 0.5 km)
+            # Log consumption entry if distance threshold reached (every 0.25 km)
             if distance_km is not None:
                 distance_since_last_log = distance_km - self.last_consumption_log_distance
                 
-                if distance_since_last_log >= 0.5:  # Log every 500m
+                if distance_since_last_log >= 0.25:  # ✅ FIX: Log every 250m (was 500m, too sparse)
                     avg_consumption = self.get_segmented_consumption(self.total_distance)
                     instant_consumption = self.get_instant_power_consumption(throttle_pos, mode, speed_kmph)
                     
