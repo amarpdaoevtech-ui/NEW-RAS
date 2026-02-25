@@ -589,6 +589,8 @@ def i2c_reader_thread():
     last_loop_time = time.time()
     last_valid_i2c = time.time()
     last_emit_time = 0  # Track last socketio emit time for continuous updates
+    last_odometer_save_time = time.time()  # ✅ FIX: Track when we last saved odometer
+    last_saved_distance = odometer.get_distance()  # ✅ FIX: Track distance at last save
     
     while True:
         try:
@@ -635,16 +637,34 @@ def i2c_reader_thread():
                         bms_data["esp32_connected"] = False
                     
                     should_emit = True  # Emit the reset state
+                else:
+                    # ✅ FIX: ACCUMULATE DISTANCE USING LAST KNOWN SPEED
+                    # Even if ESP32 sends duplicate seq numbers, the scooter is still moving!
+                    with data_lock:
+                        current_speed = bms_data["speed_kmph"]
+                    
+                    if current_speed > 0 and time_delta > 0:
+                        total_distance = odometer.update(current_speed, time_delta)
+                        with data_lock:
+                            bms_data["total_distance"] = round(total_distance, 2)
                 
                 # ✅ CRITICAL FIX: Even if we got duplicate sequence numbers,
                 # emit the current speed/throttle values every 100ms to keep display updated
-                elif current_time - last_emit_time >= 0.1:
+                if current_time - last_emit_time >= 0.1:
                     should_emit = True  # Emit current state for continuous display
             
             # Emit socketio update if needed
             if should_emit:
                 socketio.emit('bms_update', bms_data)
                 last_emit_time = current_time
+            
+            # ✅ FIX: Periodically save odometer to disk (every 10s or every 0.1km)
+            current_dist = odometer.get_distance()
+            if (current_time - last_odometer_save_time > 10.0) or \
+               (current_dist - last_saved_distance >= 0.1):
+                odometer.save()
+                last_odometer_save_time = current_time
+                last_saved_distance = current_dist
             
             # Read Battery Data (less frequent)
             if int(time.time()) % 2 == 0:
