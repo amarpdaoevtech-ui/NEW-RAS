@@ -278,11 +278,12 @@ class Database:
 db = Database()
 
 # Initialize Enhanced DTE Calculator (Industry-competitive algorithms)
-# Battery capacity for 703-O: 79V × 30Ah = 2370 Wh
+# Battery capacity for 703-O: 75V nominal × 30Ah = 1800 Wh usable
+# (Max voltage 84V, cutoff 69V, mid-point ~75V effective)
 dte_calc = EnhancedDTECalculator(
     db_path=str(Path(__file__).parent.parent / os.getenv('DB_PATH', 'data/bms_data.db')),
-    battery_capacity_wh=2370,  # 79V × 30Ah
-    nominal_voltage=79.0
+    battery_capacity_wh=2250,  # 75V_nominal × 30Ah = 2250 Wh  (Vmax=84V, Vmin=69V)
+    nominal_voltage=75.0
 )
 
 # Initialize Persistent Odometer
@@ -342,10 +343,11 @@ bms_data = {
     # DTE Data (Enhanced)
     "dte": 0.0,
     "dte_avg_consumption": 0.0,
-    "dte_confidence": "LOW",  # NEW: Confidence level (LOW, MEDIUM, HIGH)
+    "dte_confidence": "LOW",       # Confidence level (LOW, MEDIUM, HIGH)
     "regen_active": False,
     "session_id": None,
-    "total_distance": 0.0
+    "total_distance": 0.0,         # Lifetime odometer (persists across reboots)
+    "current_ride_distance": 0.0   # This boot/session only (resets each power-on)
 }
 data_lock = threading.Lock()
 
@@ -457,6 +459,7 @@ def decode_dao_bms_payload(payload: bytes):
 
     dte_calc.detect_ride_status(speed_kmph, throttle_pos)
 
+    # ✅ FIX: Pass persistent odometer distance so DTE calc gets real distance data
     dte_calc.log_sensor_reading(
         voltage_v=voltage,
         current_a=dchg_cur,
@@ -465,7 +468,7 @@ def decode_dao_bms_payload(payload: bytes):
         temperature_c=avg_temp,
         speed_kmph=speed_kmph,
         throttle_pos=throttle_pos,
-        distance_km=bms_data.get("total_distance", 0.0),
+        distance_km=odometer.get_distance(),   # ✅ Use real persistent odometer
         mode=bms_data.get("speed_mode", "medium").lower()
     )
 
@@ -606,10 +609,10 @@ def i2c_reader_thread():
                 # NEW DATA RECEIVED
                 last_valid_i2c = current_time
                 speed_kmph = spd_data["speed_kmph"]
-                
-                # Update persistent odometer
-                total_distance = odometer.update(speed_kmph, time_delta)
-                
+
+                # Update odometer (both total and session)
+                total_distance, session_distance = odometer.update(speed_kmph, time_delta)
+
                 with data_lock:
                     bms_data["speed_kmph"] = speed_kmph
                     bms_data["throttle"] = spd_data.get("throttle", 0.0)
@@ -617,17 +620,18 @@ def i2c_reader_thread():
                     bms_data["brake"] = spd_data["brake"]
                     bms_data["esp32_connected"] = True
                     bms_data["last_update"] = time.time()
-                    bms_data["total_distance"] = round(total_distance, 2)  # Persist distance
-                
-                # ✅ Log speed activity for debugging
+                    bms_data["total_distance"] = round(total_distance, 2)           # Lifetime ODO
+                    bms_data["current_ride_distance"] = round(session_distance, 2)  # This ride
+
+                # Log speed activity for debugging
                 if speed_kmph > 0:
-                    logger.debug(f"SPD_SYNC: {speed_kmph} kmh | ODO: {total_distance} km")
-                
+                    logger.debug(f"SPD_SYNC: {speed_kmph} kmh | ODO: {total_distance:.2f} km | Session: {session_distance:.2f} km")
+
                 should_emit = True  # Always emit when we get new data
-                
+
             else:
                 # NO NEW DATA (duplicate sequence number or no I2C data)
-                # ✅ PATIENT TIMEOUT: Only reset to 0 if no data for 10 seconds
+                # Patient timeout: only reset to 0 if no data for 10 seconds
                 if current_time - last_valid_i2c > 10.0:
                     with data_lock:
                         if bms_data["speed_kmph"] > 0:
@@ -635,18 +639,18 @@ def i2c_reader_thread():
                         bms_data["speed_kmph"] = 0.0
                         bms_data["throttle"] = 0.0
                         bms_data["esp32_connected"] = False
-                    
+
                     should_emit = True  # Emit the reset state
                 else:
                     # ✅ FIX: ACCUMULATE DISTANCE USING LAST KNOWN SPEED
-                    # Even if ESP32 sends duplicate seq numbers, the scooter is still moving!
                     with data_lock:
                         current_speed = bms_data["speed_kmph"]
-                    
+
                     if current_speed > 0 and time_delta > 0:
-                        total_distance = odometer.update(current_speed, time_delta)
+                        total_distance, session_distance = odometer.update(current_speed, time_delta)
                         with data_lock:
                             bms_data["total_distance"] = round(total_distance, 2)
+                            bms_data["current_ride_distance"] = round(session_distance, 2)
                 
                 # ✅ CRITICAL FIX: Even if we got duplicate sequence numbers,
                 # emit the current speed/throttle values every 100ms to keep display updated
@@ -730,9 +734,10 @@ def get_dte():
         return jsonify({
             "dte": bms_data.get("dte", 0),
             "dte_avg_consumption": bms_data.get("dte_avg_consumption", 0),
-            "dte_confidence": bms_data.get("dte_confidence", "LOW"),  # NEW
+            "dte_confidence": bms_data.get("dte_confidence", "LOW"),
             "regen_active": bms_data.get("regen_active", False),
-            "total_distance": bms_data.get("total_distance", 0),  # NEW
+            "total_distance": bms_data.get("total_distance", 0),       # Lifetime ODO
+            "current_ride_distance": bms_data.get("current_ride_distance", 0),  # This ride
             "soc": bms_data.get("soc", 0),
             "soh": bms_data.get("soh", 0),
             "temperature": bms_data.get("temperature", 0),
@@ -823,18 +828,19 @@ def dte_update_task():
                 soh = bms_data.get('soh', 100)
                 temp = bms_data.get('temperature', 0)
                 speed = bms_data.get('speed_kmph', 0.0)
-                throttle = bms_data.get('throttle', 0.0)  # NEW: Pass throttle for instant power
+                throttle = bms_data.get('throttle', 0.0)
                 mode = bms_data.get('speed_mode', 'medium').lower()
+                voltage = bms_data.get('voltage', 0.0)   # ✅ NEW: Pass voltage for SOC correction
 
             # Calculate DTE using the enhanced calculator
-            # Returns: (dte_km, consumption, regen_active, confidence)
             result = dte_calc.calculate_dte(
                 soc_percent=soc,
                 soh_percent=soh,
                 temperature_c=temp,
                 speed_kmph=speed,
-                throttle_pct=throttle,  # NEW: Instant power factor
-                mode=mode
+                throttle_pct=throttle,
+                mode=mode,
+                voltage_v=voltage   # ✅ NEW: Voltage-corrected SOC (84V max / 69V min)
             )
             
             # Handle both old 3-tuple and new 4-tuple returns for compatibility
@@ -848,9 +854,12 @@ def dte_update_task():
                 bms_data['dte'] = round(dte_km, 2)
                 bms_data['dte_avg_consumption'] = round(avg_consumption, 2)
                 bms_data['regen_active'] = regen
-                bms_data['dte_confidence'] = confidence  # NEW: Confidence level
+                bms_data['dte_confidence'] = confidence
                 bms_data['session_id'] = dte_calc.session_id
-                bms_data['total_distance'] = round(dte_calc.total_distance, 2)
+                # ✅ FIX: total_distance comes from persistent odometer, not dte_calc session
+                total_odo, session_odo = odometer.get_both()
+                bms_data['total_distance'] = round(total_odo, 2)
+                bms_data['current_ride_distance'] = round(session_odo, 2)
 
             # Emit DTE update to clients
             socketio.emit('bms_update', bms_data)

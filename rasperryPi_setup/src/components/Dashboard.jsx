@@ -17,6 +17,8 @@ const Dashboard = () => {
     const [dte, setDte] = useState(0);
     const [dteAvgConsumption, setDteAvgConsumption] = useState(0);
     const [regenActive, setRegenActive] = useState(false);
+    const [totalDistance, setTotalDistance] = useState(0);
+    const [currentRideDistance, setCurrentRideDistance] = useState(0);
 
     // USER SIMULATION HELPERS (For when not connected)
     const THROTTLE_POINTS = [
@@ -60,8 +62,16 @@ const Dashboard = () => {
             if (bmsData.regen_active !== undefined) {
                 setRegenActive(bmsData.regen_active);
             }
+            if (bmsData.total_distance !== undefined) {
+                setTotalDistance(bmsData.total_distance);
+            }
+            if (bmsData.current_ride_distance !== undefined) {
+                setCurrentRideDistance(bmsData.current_ride_distance);
+            }
         }
-    }, [bmsData.speed_kmph, bmsData.throttle, bmsData.esp32_connected, bmsData.connected, bmsData.dte, bmsData.dte_avg_consumption, bmsData.regen_active]);
+    }, [bmsData.speed_kmph, bmsData.throttle, bmsData.esp32_connected, bmsData.connected,
+    bmsData.dte, bmsData.dte_avg_consumption, bmsData.regen_active,
+    bmsData.total_distance, bmsData.current_ride_distance]);
 
     // Simulation Loop (runs only if NOT connected)
     useEffect(() => {
@@ -115,7 +125,7 @@ const Dashboard = () => {
                                         leftLabel={`${bmsData.voltage.toFixed(1)} V`}
                                         rightLabel={`${bmsData.current.toFixed(1)} A`}
                                         leftValue={bmsData.voltage}
-                                        leftMax={80}
+                                        leftMax={84}
                                         rightValue={bmsData.current}
                                         rightMax={5}
                                     />
@@ -200,14 +210,17 @@ const Dashboard = () => {
                 {/* RIGHT SIDEBAR PANEL (Span 3) */}
                 <div className="col-span-3 flex flex-col relative h-full pl-6">
                     <div className="absolute inset-0 bg-[#0f0f0f] rounded-[2.5rem] -z-10 border border-white/5"></div>
-                    <div className="flex flex-col h-full p-5 gap-4">
-                        <div className="w-full bg-[#141414] border border-white/5 rounded-2xl p-4 flex justify-between items-center">
-                            <div className="bg-[#1a1a1a] rounded-full px-4 py-2 flex items-center gap-4 border border-white/5">
-                                <Settings size={20} className="text-gray-400" />
-                                <Heart size={20} className="text-white fill-white" />
-                                <AlignJustify size={20} className="text-gray-400 rotate-90" />
+                    {/* Tighter sidebar to fit 7-inch 600px height */}
+                    <div className="flex flex-col h-full p-3 gap-1">
+
+                        {/* Icon bar — compact */}
+                        <div className="w-full bg-[#141414] border border-white/5 rounded-xl p-2 flex justify-between items-center shrink-0">
+                            <div className="bg-[#1a1a1a] rounded-full px-3 py-1 flex items-center gap-3 border border-white/5">
+                                <Settings size={16} className="text-gray-400" />
+                                <Heart size={16} className="text-white fill-white" />
+                                <AlignJustify size={16} className="text-gray-400 rotate-90" />
                             </div>
-                            <div className="w-10 h-10 rounded-full bg-[#1a1a1a] border border-white/5 flex items-center justify-center relative">
+                            <div className="w-8 h-8 rounded-full bg-[#1a1a1a] border border-white/5 flex items-center justify-center">
                                 <div className="grid grid-cols-2 gap-[2px]">
                                     <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
                                     <div className="w-1 h-1 bg-gray-500 rounded-full"></div>
@@ -217,73 +230,90 @@ const Dashboard = () => {
                             </div>
                         </div>
 
-                        <div className="flex-1 bg-[#141414] rounded-3xl border border-white/40 flex flex-col relative overflow-hidden">
-                            <div className="flex-1 flex flex-col items-center justify-center p-4 border-b border-white/5 w-full">
-                                <div className="text-[10px] text-white font-bold tracking-widest uppercase mb-3 text-center w-full font-montserrat">TEMPERATURE</div>
-                                <div className="flex flex-col gap-2 w-full px-2">
+                        {/* Main info card — takes remaining height */}
+                        <div className="flex-1 bg-[#141414] rounded-3xl border border-white/40 flex flex-col relative overflow-hidden min-h-0">
+
+                            {/* TEMPERATURE — compact */}
+                            <div className="flex flex-col items-center p-2 border-b border-white/5 w-full shrink-0">
+                                <div className="text-[9px] text-white font-bold tracking-widest uppercase mb-1 text-center w-full font-montserrat">TEMPERATURE</div>
+                                <div className="flex flex-col gap-[3px] w-full px-1">
                                     {[0, 1, 2].map((idx) => (
-                                        <div key={idx} className="flex items-center justify-between bg-white/5 rounded-lg p-2 px-3 border border-[#ff5e00]/40">
-                                            <div className="flex items-center gap-2 text-[#00f2ff]">
-                                                <Thermometer size={14} />
-                                                <span className="text-[10px] font-bold tracking-wider">T{idx + 1}</span>
+                                        <div key={idx} className="flex items-center justify-between bg-white/5 rounded-md px-2 py-[2px] border border-[#ff5e00]/30">
+                                            <div className="flex items-center gap-1 text-[#00f2ff]">
+                                                <Thermometer size={11} />
+                                                <span className="text-[9px] font-bold">T{idx + 1}</span>
                                             </div>
-                                            <div className="flex items-baseline gap-1">
-                                                <span className="text-lg font-black italic text-white">
+                                            <div className="flex items-baseline gap-[2px]">
+                                                <span className="text-sm font-black italic text-white">
                                                     {bmsData.temperatures ? bmsData.temperatures[idx] : 0}
                                                 </span>
-                                                <span className="text-[10px] text-gray-400 font-bold">°C</span>
+                                                <span className="text-[8px] text-gray-400 font-bold">°C</span>
                                             </div>
                                         </div>
                                     ))}
                                 </div>
                             </div>
 
-                            <div className="flex-1 flex flex-col justify-center items-center p-2 bg-[#141414]/50 border-b border-white/5 relative group">
-                                <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase mb-1">DRIVE MODE</span>
-                                <div className="flex flex-col items-center">
-                                    <span className={`text-2xl font-black italic tracking-wider ${bmsData.speed_mode === 'POWER' ? 'text-red-500' :
+                            {/* EST. RANGE + Drive Mode badge + Distance rows */}
+                            <div className="flex-1 flex flex-col justify-start items-center pt-4 px-3 pb-2 bg-[#141414]/50 min-h-0 overflow-hidden">
+
+                                {/* Drive mode: compact inline badge */}
+                                <div className="flex items-center gap-3 mb-3">
+                                    <span className="text-[10px] text-gray-500 uppercase font-bold tracking-widest">Mode:</span>
+                                    <span className={`text-base font-black italic tracking-wider ${bmsData.speed_mode === 'POWER' ? 'text-red-400' :
                                         bmsData.speed_mode === 'SPORTS' ? 'text-neon-orange' :
                                             'text-neon-cyan'
-                                        }`}>
-                                        {bmsData.speed_mode || 'ECONOMY'}
-                                    </span>
-                                    <div className="flex gap-1 mt-1">
-                                        {[0, 1, 2].map((m) => (
-                                            <div key={m} className={`w-3 h-1 rounded-full ${(bmsData.speed_mode === 'POWER' && m === 0) ||
-                                                (bmsData.speed_mode === 'ECONOMY' && m === 1) ||
-                                                (bmsData.speed_mode === 'SPORTS' && m === 2)
-                                                ? 'bg-white' : 'bg-white/10'
-                                                }`}></div>
-                                        ))}
-                                    </div>
+                                        }`}>{bmsData.speed_mode || 'ECO'}</span>
                                 </div>
-                            </div>
 
-                            <div className="flex-1 flex flex-col justify-center items-center p-2 bg-[#141414]/50 relative group">
-                                <span className="text-[10px] text-gray-500 font-bold tracking-widest uppercase mb-1">EST. DISTANCE</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-3xl font-black italic text-white tracking-wider">
+                                {/* DTE big number */}
+                                <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">EST. RANGE</span>
+                                <div className="flex items-baseline gap-2 mt-1">
+                                    <span className="text-5xl font-black italic text-white tracking-wider leading-none">
                                         {dte > 0 ? Math.round(dte) : '--'}
                                     </span>
-                                    <span className="text-xs font-bold text-neon-orange">KM</span>
+                                    <span className="text-lg font-bold text-neon-orange">KM</span>
                                 </div>
-                                <div className="text-[8px] text-gray-600 mt-1">To Empty</div>
+                                <div className="text-[10px] text-gray-600 mb-4 font-bold uppercase tracking-tighter">To Empty</div>
 
-                                {/* Total Distance (Odometer) */}
-                                <div className="mt-2 pt-1 border-t border-white/10 w-full flex justify-between px-4 items-center">
-                                    <span className="text-[8px] text-gray-500 font-bold uppercase">ODO</span>
-                                    <div className="flex items-baseline gap-1">
-                                        <span className="text-sm font-bold text-white">
-                                            {bmsData.total_distance ? bmsData.total_distance.toFixed(1) : '0.0'}
-                                        </span>
-                                        <span className="text-[8px] text-neon-cyan font-bold">KM</span>
+                                {/* Distance rows */}
+                                <div className="w-full border-t border-white/10 pt-4 flex flex-col gap-2">
+
+                                    {/* Total ODO */}
+                                    <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3 border border-[#00f2ff]/30 shadow-inner">
+                                        <div className="flex flex-col leading-tight">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Total ODO</span>
+                                            <span className="text-[9px] text-gray-600 font-bold">LIFETIME</span>
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-2xl font-black italic text-white">
+                                                {totalDistance ? totalDistance.toFixed(1) : '0.0'}
+                                            </span>
+                                            <span className="text-xs text-[#00f2ff] font-bold">KM</span>
+                                        </div>
                                     </div>
+
+                                    {/* This Ride */}
+                                    <div className="flex items-center justify-between bg-white/5 rounded-xl px-4 py-3 border border-neon-orange/30 shadow-inner">
+                                        <div className="flex flex-col leading-tight">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">This Ride</span>
+                                            <span className="text-[9px] text-gray-600 font-bold">SINCE BOOT</span>
+                                        </div>
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-2xl font-black italic text-white">
+                                                {currentRideDistance ? currentRideDistance.toFixed(1) : '0.0'}
+                                            </span>
+                                            <span className="text-xs text-neon-orange font-bold">KM</span>
+                                        </div>
+                                    </div>
+
                                 </div>
 
+                                {/* Wh/km + regen */}
                                 {dteAvgConsumption > 0 && (
-                                    <div className="text-[8px] text-gray-500 mt-2 flex gap-1 items-center justify-center w-full">
+                                    <div className="text-[10px] text-gray-400 mt-4 flex gap-2 items-center justify-center w-full font-bold">
                                         <span>{dteAvgConsumption.toFixed(1)} Wh/km</span>
-                                        {regenActive && <span className="text-neon-cyan font-bold">🔋 REGEN</span>}
+                                        {regenActive && <span className="text-neon-cyan font-black animate-pulse">🔋 REGEN</span>}
                                     </div>
                                 )}
                             </div>

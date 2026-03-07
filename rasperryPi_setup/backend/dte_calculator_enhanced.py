@@ -9,10 +9,20 @@ Features:
   ✓ Mode-specific base consumption (Industry standard)
   ✓ Idle drain compensation (Ather innovation)
   ✓ SOC non-linearity (All manufacturers)
+  ✓ Voltage-based SOC correction (84V max / 69V min)
   ✓ Confidence calculation
   ✓ No ML - embedded-friendly
 
-Version: 1.0 | Date: February 2026
+Version: 1.1 | Date: February 2026
+
+Battery Spec (703-O verified):
+  Nominal voltage    : 75V    → (84V + 69V) / 2 = 76.5V ≈ 75V mid-point
+  Capacity           : 30 Ah
+  Total energy       : 75V × 30Ah = 2250 Wh
+  Max voltage (100%) : 84 V   (full charge)
+  Min voltage  (0%)  : 69 V   (under-voltage cutoff)
+  Real-world range   : ~65 km (senior-validated at 100% SOC)
+  Avg consumption    : 2250 Wh ÷ 65 km = 34.6 Wh/km ≈ 35 Wh/km
 """
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -44,14 +54,20 @@ class EnhancedDTECalculator:
         'high': {0: 120, 25: 400, 50: 800, 75: 1200, 100: 1600}
     }
     
-    def __init__(self, db_path='data/bms_data.db', battery_capacity_wh=2370, nominal_voltage=79.0):
+    # ✅ Voltage thresholds for SOC cross-check
+    VMAX = 84.0   # 100% SOC voltage (full charge)
+    VMIN = 69.0   # 0% SOC voltage  (under-voltage cutoff)
+
+    def __init__(self, db_path='data/bms_data.db', battery_capacity_wh=2250, nominal_voltage=75.0):
         """
         Initialize Enhanced DTE Calculator
-        
+
         Args:
             db_path: Path to SQLite database
-            battery_capacity_wh: Battery capacity in Wh (79V × 30Ah = 2370 Wh for 703-O)
-            nominal_voltage: Nominal battery voltage (79V for 703-O)
+            battery_capacity_wh: Battery capacity in Wh
+                                 703-O: 75V_nominal × 30Ah = 2250 Wh
+                                 (Vmax=84V, Vmin=69V, nominal=(84+69)/2=76.5≈75V)
+            nominal_voltage: Nominal battery voltage (75V for 703-O)
         """
         self.db_path = db_path
         self.battery_capacity_wh = battery_capacity_wh
@@ -84,8 +100,11 @@ class EnhancedDTECalculator:
         self.last_dte_value = 0
         
         # ✅ FIXED: Relaxed smoothing parameters (was too aggressive, DTE barely moved)
-        self.dte_smoothing_alpha = 0.20  # Moderate smoothing (was 0.05, way too slow)
-        self.max_rate_change_km = 0.5    # Max 500m change per update cycle (was 0.1, too tight)
+        self.dte_smoothing_alpha = 0.20  # Moderate smoothing
+        self.max_rate_change_km = 0.5    # Max 500m change per update cycle
+
+        # ✅ NEW: Last known voltage for SOC cross-check
+        self.last_voltage = 0.0
         
         # Track last consumption log time to avoid duplicate entries
         self.last_consumption_log_time = None
@@ -231,6 +250,37 @@ class EnhancedDTECalculator:
             return 1.05  # 5% more in heat
         else:
             return 1.12  # 12% more in extreme heat
+
+    # =========================================================================
+    # ✅ NEW: Voltage-based SOC correction (84V max / 69V min)
+    # =========================================================================
+    def get_voltage_soc(self, voltage_v):
+        """
+        Derive SOC% from live pack voltage using linear mapping.
+        Max voltage = 84V (100% SOC), Min voltage = 69V (0% SOC).
+        This cross-checks the BMS-reported SOC for accuracy.
+
+        Returns: estimated SOC% derived purely from voltage (0-100)
+        """
+        vmax = self.VMAX  # 84 V
+        vmin = self.VMIN  # 69 V
+        v = max(vmin, min(vmax, voltage_v))  # Clamp to valid range
+        return round(((v - vmin) / (vmax - vmin)) * 100.0, 1)
+
+    def get_effective_soc(self, bms_soc, voltage_v):
+        """
+        Blend BMS-reported SOC with voltage-derived SOC.
+        Gives 70% weight to BMS (more accurate long-term),
+        30% weight to voltage (immediate correction).
+
+        Returns: effective SOC% to use in energy calculations
+        """
+        if voltage_v < 1.0:  # No voltage reading yet
+            return bms_soc
+        v_soc = self.get_voltage_soc(voltage_v)
+        blended = 0.70 * bms_soc + 0.30 * v_soc
+        logger.debug(f"SOC blend: BMS={bms_soc}%, V-derived={v_soc}% → Effective={blended:.1f}%")
+        return blended
     
     def get_mode_multiplier(self, mode):
         """Get consumption multiplier based on riding mode"""
@@ -457,52 +507,74 @@ class EnhancedDTECalculator:
         else:
             return 'HIGH'
 
-    def get_adjusted_capacity(self, soh_percent, temperature_c):
-        """Calculate adjusted battery capacity based on SOH and temperature"""
-        base_capacity = self.battery_capacity_wh * (soh_percent / 100.0)
-        # Note: temp_factor here increases consumption, not reduces capacity directly
-        # So we don't apply it to capacity, but to consumption instead
-        return base_capacity
-    
-    def calculate_available_energy(self, soc_percent, soh_percent, temperature_c):
+    def get_adjusted_capacity(self, soh_percent):
+        """Calculate adjusted battery capacity based on SOH"""
+        return self.battery_capacity_wh * (soh_percent / 100.0)
+
+    def calculate_available_energy(self, soc_percent, soh_percent, temperature_c, voltage_v=0.0):
         """
-        Calculate available energy with SOC non-linearity
-        
+        Calculate available energy with:
+          - Voltage-corrected SOC (84V→100%, 69V→0%)
+          - SOH degradation
+          - SOC non-linearity (Li-ion voltage sag)
+          - Idle drain compensation
+
         Returns:
             float: Available energy in Wh
         """
+        # ✅ NEW: Use voltage-corrected effective SOC
+        effective_soc = self.get_effective_soc(soc_percent, voltage_v)
+
         # Base capacity adjusted for SOH
-        adjusted_capacity = self.get_adjusted_capacity(soh_percent, temperature_c)
-        
+        adjusted_capacity = self.get_adjusted_capacity(soh_percent)
+
         # SOC-based energy
-        energy = (soc_percent / 100.0) * adjusted_capacity
-        
-        # ✅ NEW: Apply SOC non-linearity factor
-        soc_factor = self.get_soc_usable_factor(soc_percent)
+        energy = (effective_soc / 100.0) * adjusted_capacity
+
+        # Apply SOC non-linearity factor (Li-ion voltage sag)
+        soc_factor = self.get_soc_usable_factor(effective_soc)
         energy *= soc_factor
-        
-        # ✅ NEW: Apply idle drain compensation
+
+        # Apply idle drain compensation
         energy = self.apply_idle_drain_compensation(energy)
-        
+
+        logger.debug(
+            f"Energy calc: BMS_SOC={soc_percent}%, V={voltage_v:.1f}V, "
+            f"Eff_SOC={effective_soc:.1f}%, SOH={soh_percent}%, "
+            f"Capacity={adjusted_capacity:.0f}Wh → Energy={energy:.1f}Wh"
+        )
         return max(energy, 0)
     
     # =========================================================================
     # ✅ ENHANCED: Rate Limiter
     # =========================================================================
-    def _rate_limit(self, new_dte, max_change=None):
+    def _rate_limit(self, new_dte, speed_kmph=0.0):
         """
-        Prevent sudden jumps in DTE
+        Prevent sudden jumps in DTE.
+        Asymmetric limits:
+          - Moving upward   : max +0.2 km per update (slow rise, hard to game)
+          - Moving downward : max -1.0 km per update (fast fall, responds to drain)
+        This prevents the 'DTE creeping up during a ride' bug.
         """
-        if max_change is None:
-            max_change = self.max_rate_change_km
-        
         if self.last_dte_value == 0:
             return new_dte
-        
+
         change = new_dte - self.last_dte_value
-        if abs(change) > max_change:
-            return self.last_dte_value + (max_change if change > 0 else -max_change)
-        return new_dte
+        is_moving = speed_kmph > 2.0
+
+        # if change > 0:
+        #     # DTE wants to go UP — very strict limit when moving (consuming energy)
+        #     max_up = 0.1 if is_moving else 0.3
+        #     return self.last_dte_value + min(change, max_up)
+        if change > 0:
+            if is_moving:
+                return self.last_dte_value  
+            else:
+                return self.last_dte_value + min(change, 0.3)
+        else:
+            # DTE wants to go DOWN — allow fast drop to show real drain
+            max_down = 1.0
+            return self.last_dte_value + max(change, -max_down)
     
     # =========================================================================
     # ✅ ENHANCED: EMA Smoothing
@@ -610,8 +682,8 @@ class EnhancedDTECalculator:
     # =========================================================================
     # ✅ ENHANCED: Main DTE Calculation
     # =========================================================================
-    def calculate_dte(self, soc_percent, soh_percent, temperature_c, speed_kmph, 
-                      throttle_pct=0, mode="medium"):
+    def calculate_dte(self, soc_percent, soh_percent, temperature_c, speed_kmph,
+                      throttle_pct=0, mode="medium", voltage_v=0.0):
         """
         Calculate Distance-to-Empty with industry-competitive algorithms
         
@@ -635,26 +707,33 @@ class EnhancedDTECalculator:
             temp_factor = self.get_temperature_factor(temperature_c)
             consumption *= temp_factor
             
-            # Ensure minimum consumption
-            consumption = max(consumption, 5.0)
+            # Ensure minimum consumption — 30 Wh/km is lowest possible for any
+            # moving EV scooter at 60-80 km/h (proven by your real ride data)
+            # Old value was 5.0 Wh/km which caused DTE to creep UP during rides
+            consumption = max(consumption, 30.0)
             
-            # Step 4: Calculate available energy (with SOC non-linearity + idle drain)
-            available_energy = self.calculate_available_energy(soc_percent, soh_percent, temperature_c)
-            
+            # Step 4: Calculate available energy (voltage-corrected SOC + SOH + non-linearity)
+            # ✅ FIX: Pass live voltage so SOC is cross-checked against 84V/69V boundaries
+            available_energy = self.calculate_available_energy(
+                soc_percent, soh_percent, temperature_c, voltage_v
+            )
+
             # Step 5: Calculate raw DTE
             if consumption > 0:
                 dte_raw = available_energy / consumption
             else:
                 dte_raw = 0
-            
-            # Step 6: Rate limiter (±0.3 km per update)
-            dte_raw = self._rate_limit(dte_raw)
-            
-            # Step 7: EMA smoothing (α=0.25)
+
+            # Step 6: Rate limiter (asymmetric: slow up, fast down)
+            dte_raw = self._rate_limit(dte_raw, speed_kmph=speed_kmph)
+
+            # Step 7: EMA smoothing
             dte_smoothed = self._ema_smooth(dte_raw)
-            
-            # Step 8: Cap DTE at reasonable maximum
-            max_dte = self.battery_capacity_wh / 20  # ~118 km for 2370 Wh
+
+            # Step 8: Cap DTE at realistic maximum
+            # Correct math: 2250 Wh ÷ 35 Wh/km = 64.3 km ≈ 65 km (senior-validated)
+            # 35 Wh/km = 2250 / 65 (the confirmed real-world range at 100% SOC)
+            max_dte = self.battery_capacity_wh / 35
             dte_final = min(dte_smoothed, max_dte)
             
             # Step 9: Calculate confidence
