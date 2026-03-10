@@ -147,7 +147,7 @@ server {
     server_name localhost;
     
     # Frontend
-    root $PROJECT_ROOT/dist;
+    root "$PROJECT_ROOT/dist";
     index index.html;
     
     location / {
@@ -199,9 +199,9 @@ After=network.target
 [Service]
 Type=simple
 User=$USER
-WorkingDirectory=$PROJECT_ROOT
+WorkingDirectory=$PROJECT_ROOT/backend
 Environment="PATH=$PROJECT_ROOT/backend/venv/bin"
-ExecStart=$PROJECT_ROOT/backend/venv/bin/python $PROJECT_ROOT/backend/bms_server_enhanced.py
+ExecStart=$PROJECT_ROOT/backend/venv/bin/python main.py
 Restart=always
 RestartSec=10
 

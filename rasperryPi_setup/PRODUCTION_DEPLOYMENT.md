@@ -174,7 +174,7 @@ cat config/bike_models.json | grep "703-O"
 ```bash
 cd ~/rasperryPi_setup/backend
 source venv/bin/activate
-python bms_server_enhanced.py
+python main.py
 ```
 
 You should see:

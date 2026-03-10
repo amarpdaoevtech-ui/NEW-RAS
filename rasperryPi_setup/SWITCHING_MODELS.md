@@ -344,7 +344,7 @@ sudo systemctl stop bms-backend.service
 # Run manually to test
 cd backend
 source venv/bin/activate
-python bms_server_enhanced.py
+python main.py
 
 # Watch for errors, then Ctrl+C to stop
 deactivate
@@ -356,7 +356,7 @@ sudo systemctl start bms-backend.service
 ### Tip 3: Use Environment Variables for Quick Testing
 ```bash
 # Override model temporarily (doesn't change .env)
-BIKE_MODEL=GENERIC-EV python backend/bms_server_enhanced.py
+BIKE_MODEL=GENERIC-EV python main.py
 ```
 
 ### Tip 4: Create Model-Specific .env Files
