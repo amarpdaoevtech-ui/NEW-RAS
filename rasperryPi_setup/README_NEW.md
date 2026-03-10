@@ -73,7 +73,7 @@ cd backend && pip install -r requirements.txt
 
 # 3. Run backend
 cd backend
-python bms_server_enhanced.py
+python main.py
 
 # 4. Run frontend (new terminal)
 npm run dev
@@ -89,8 +89,10 @@ http://localhost:5173
 ```
 rasperryPi_setup/
 ├── backend/
-│   ├── bms_server_enhanced.py    # Enhanced backend with DB & config
-│   ├── bms_server.py              # Original backend (legacy)
+│   ├── main.py                    # Modular orchestrator (USE THIS)
+│   ├── api/                       # API routes and sockets
+│   ├── hardware/                  # Hardware drivers
+│   ├── logic/                     # DTE and Odometer logic
 │   └── requirements.txt           # Python dependencies
 │
 ├── config/

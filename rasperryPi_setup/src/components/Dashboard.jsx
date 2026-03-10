@@ -8,8 +8,12 @@ import Speedometer from './Speedometer';
 import useBMSData from '../hooks/useBMSData';
 
 const Dashboard = () => {
-    // Connect to BMS backend - adjust URL for Raspberry Pi
-    const bmsData = useBMSData('http://localhost:5000');
+    // Connect to BMS backend - uses the same host as the frontend
+    const bmsData = useBMSData(
+        window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+            ? 'http://localhost:5000'
+            : `http://${window.location.hostname}:5000`
+    );
 
     const [speed, setSpeed] = useState(0);
     const [speedHistory, setSpeedHistory] = useState(new Array(20).fill(0));

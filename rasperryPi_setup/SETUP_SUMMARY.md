@@ -56,7 +56,7 @@ config/
 ### Backend
 ```
 backend/
-├── bms_server_enhanced.py     # New enhanced backend (USE THIS)
+├── main.py                    # Modular orchestrator (USE THIS)
 ├── bms_server.py              # Original (kept for reference)
 └── requirements.txt           # Updated with python-dotenv
 ```
@@ -142,7 +142,7 @@ This model is defined in `config/bike_models.json` with:
 
 2. **Run enhanced backend:**
    ```powershell
-   python bms_server_enhanced.py
+   python main.py
    ```
 
 3. **In new terminal, run frontend:**
