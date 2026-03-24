@@ -216,15 +216,22 @@ class EnhancedDTECalculator:
             conn.close()
         except: pass
 
-    def log_sensor_reading(self, voltage_v, current_a, soc_percent, soh_percent, temperature_c, speed_kmph, throttle_pos, distance_km=None, mode="medium"):
+    def log_sensor_reading(self, voltage_v, current_a, soc_percent, soh_percent, temperature_c,
+                           speed_kmph, throttle_pos,
+                           total_odometer_km=None, session_distance_km=None, mode="medium"):
         try:
             if self.session_id is None and soc_percent > 10:
                 self.start_session(soc_percent, riding_mode=mode)
             if self.session_id is None: return
-            if distance_km is not None:
-                self.total_distance += max(0, distance_km - self.last_distance)
-                self.last_distance = distance_km
-            
+
+            # Track current mode immediately
+            self.riding_mode = mode
+
+            # Track session distance using the odometer's session_distance_km directly
+            if session_distance_km is not None:
+                self.total_distance = session_distance_km
+
+            # Accumulate energy consumed this session
             cur_ts = time.time()
             if self.last_power_timestamp:
                 dt_h = (cur_ts - self.last_power_timestamp) / 3600.0
@@ -233,23 +240,59 @@ class EnhancedDTECalculator:
                 if current_a < -2.0: self.total_energy_regenerated += energy
                 elif p_w > 0: self.total_energy_used += energy
             self.last_power_timestamp = cur_ts
+
+            # Log a snapshot for efficiency history every 0.25km of TOTAL LIFETIME odometer
+            if total_odometer_km is not None and (total_odometer_km - self.last_consumption_log_distance) >= 0.25:
+                self._log_consumption(
+                    total_odometer_km=total_odometer_km,
+                    session_distance_km=session_distance_km or 0.0,
+                    voltage_v=voltage_v,
+                    current_a=current_a,
+                    soc=soc_percent,
+                    speed=speed_kmph,
+                    mode=mode
+                )
+                self.last_consumption_log_distance = total_odometer_km
             
-            if distance_km is not None and (distance_km - self.last_consumption_log_distance) >= 0.25:
-                avg = self.get_segmented_consumption(self.total_distance)
-                inst = self.get_instant_power_consumption(throttle_pos, mode, speed_kmph)
-                self._log_consumption(self.total_distance, self.total_energy_used, self.total_energy_regenerated, avg, inst, speed_kmph, soc_percent, mode)
-                self.last_consumption_log_distance = distance_km
+            # Always update the ride_sessions summary row to ensure persistence
+            self._update_session_totals()
+
         except Exception as e: logger.error(f"Error log sensors: {e}")
 
-    def _log_consumption(self, dist, used, regen, avg, inst, speed, soc, mode):
+    def _log_consumption(self, total_odometer_km, session_distance_km, voltage_v, current_a, soc, speed, mode):
+        """Insert one lifetime odometer snapshot row into consumption_history."""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute('INSERT INTO consumption_history (session_id, distance_traveled, energy_used, energy_regenerated, avg_consumption, instant_consumption, current_speed, current_soc, riding_mode) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-                         (self.session_id, dist, used, regen, avg, inst, speed, soc, mode))
+            cursor.execute(
+                'INSERT INTO consumption_history '
+                '(session_id, total_odometer_km, session_distance_km, voltage, current, current_soc, current_speed, riding_mode) '
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+                (self.session_id, round(total_odometer_km, 4), round(session_distance_km, 4),
+                 round(voltage_v, 2), round(current_a, 2), soc, round(speed, 2), mode)
+            )
             conn.commit()
             conn.close()
-        except: pass
+        except Exception as e: logger.error(f"Error _log_consumption: {e}")
+
+    def _update_session_totals(self):
+        """Persist the running session totals and latest mode back to the ride_sessions table."""
+        if self.session_id is None:
+            return
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute(
+                'UPDATE ride_sessions SET total_distance = ?, total_energy_used = ?, total_energy_regenerated = ?, riding_mode = ? WHERE session_id = ?',
+                (round(self.total_distance, 4), round(self.total_energy_used, 4), 
+                 round(self.total_energy_regenerated, 4), self.riding_mode, self.session_id)
+            )
+            if cursor.rowcount == 0:
+                logger.warning(f"No ride_sessions row found to update for session {self.session_id}")
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            logger.error(f"Error updating session totals: {e}")
 
     def get_session_stats(self):
         return {
