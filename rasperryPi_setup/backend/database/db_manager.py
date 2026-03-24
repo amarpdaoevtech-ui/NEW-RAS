@@ -67,19 +67,19 @@ class DBManager:
                 )
             ''')
             
-            # Consumption history
+            # Consumption history — lifetime odometer logbook
+            # One row every 0.25km of total lifetime distance, regardless of ride
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS consumption_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     session_id TEXT,
                     timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    distance_traveled REAL,
-                    energy_used REAL,
-                    energy_regenerated REAL,
-                    avg_consumption REAL,
-                    instant_consumption REAL,
-                    current_speed REAL,
+                    total_odometer_km REAL,
+                    session_distance_km REAL,
+                    voltage REAL,
+                    current REAL,
                     current_soc INTEGER,
+                    current_speed REAL,
                     riding_mode TEXT,
                     FOREIGN KEY (session_id) REFERENCES ride_sessions(session_id)
                 )
@@ -101,8 +101,33 @@ class DBManager:
             
             # Indexes
             cursor.execute('CREATE INDEX IF NOT EXISTS idx_timestamp ON bms_logs(timestamp)')
-            cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumption_distance ON consumption_history(distance_traveled)')
-            
+            cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumption_odometer ON consumption_history(total_odometer_km)')
+
+            # --- Auto-migration: detect and upgrade old consumption_history schema ---
+            cursor.execute("PRAGMA table_info(consumption_history)")
+            col_names = [row[1] for row in cursor.fetchall()]
+            if 'distance_traveled' in col_names or 'total_odometer_km' not in col_names:
+                print("⚠️  Old consumption_history schema detected. Migrating to new schema...")
+                cursor.execute("DROP TABLE IF EXISTS consumption_history")
+                cursor.execute('''
+                    CREATE TABLE consumption_history (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        session_id TEXT,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        total_odometer_km REAL,
+                        session_distance_km REAL,
+                        voltage REAL,
+                        current REAL,
+                        current_soc INTEGER,
+                        current_speed REAL,
+                        riding_mode TEXT,
+                        FOREIGN KEY (session_id) REFERENCES ride_sessions(session_id)
+                    )
+                ''')
+                cursor.execute('CREATE INDEX IF NOT EXISTS idx_consumption_odometer ON consumption_history(total_odometer_km)')
+                print("✅ consumption_history migrated to new schema.")
+            # -------------------------------------------------------------------------
+
             conn.commit()
             conn.close()
             print(f"✅ Database initialized: {self.db_path}")

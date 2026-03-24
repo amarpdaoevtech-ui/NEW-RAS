@@ -71,7 +71,7 @@ def bms_reader_thread():
                     api_server.update_data(data)
                     db_manager.log_bms_data(api_server.bms_data)
                     
-                    # Update DTE
+                    # Update DTE tracking with current odometer totals
                     dte_calc.log_sensor_reading(
                         voltage_v=data['voltage'],
                         current_a=data['current'],
@@ -80,7 +80,8 @@ def bms_reader_thread():
                         temperature_c=data['temperature'],
                         speed_kmph=api_server.bms_data['speed_kmph'],
                         throttle_pos=api_server.bms_data['throttle'],
-                        distance_km=odometer.get_distance(),
+                        total_odometer_km=odometer.get_distance(),
+                        session_distance_km=odometer.get_session_distance(),
                         mode=api_server.bms_data['speed_mode']
                     )
                     
@@ -119,16 +120,26 @@ def i2c_reader_thread():
             # Speed Data
             spd_data = speed_reader.read_data()
             if spd_data:
-                total_dist, session_dist = odometer.update(spd_data['speed_kmph'], time_delta)
                 api_server.update_data({
                     "speed_kmph": spd_data['speed_kmph'],
                     "throttle": spd_data['throttle'],
                     "speed_mode": spd_data['mode'],
                     "brake": spd_data['brake'],
-                    "esp32_connected": True,
-                    "total_distance": round(total_dist, 2),
-                    "current_ride_distance": round(session_dist, 2)
+                    "esp32_connected": True
                 })
+            
+            # Continuous Odometer Update (even if no new I2C frame due to steady speed/throttle)
+            with api_server.data_lock:
+                current_speed = api_server.bms_data['speed_kmph']
+            
+            total_dist, session_dist = odometer.update(current_speed, time_delta)
+            
+            api_server.update_data({
+                "total_distance": round(total_dist, 2),
+                "current_ride_distance": round(session_dist, 2)
+            })
+            
+            if spd_data or (int(current_time * 10) % 10 == 0): # Emit on new data or 1Hz
                 api_server.emit_update()
             
             # Battery Data
