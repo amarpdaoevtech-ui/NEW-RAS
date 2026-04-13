@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EV Dashboard — Layout Preview 1024×600</title>
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #040609;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      gap: 16px;
+      padding: 24px;
+    }
+
+    /* ── Debug ruler (optional — remove in prod) ── */
+    .ruler {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      color: #334155;
+      font-family: monospace;
+      letter-spacing: 0.05em;
+    }
+    .ruler-segment { display: flex; align-items: center; gap: 4px; }
+    .ruler-line { height: 1px; background: #334155; }
+    .ruler-bracket { color: #475569; }
+
+    /* ─────────────────────────────────────────────────────
+       SCREEN CONTAINER — 1024 × 600 px
+       ───────────────────────────────────────────────────── */
+    .screen {
+      width: 1024px;
+      height: 600px;
+      background: #0F1218;
+      overflow: hidden;
+      position: relative;
+
+      /* Horizontal: 8px each side  |  Vertical: 7px each side */
+      padding: 7px 8px;
+
+      /* Three-column layout: [112px strip] [784px grid] [112px strip] */
+      display: flex;
+      align-items: flex-start;
+      gap: 0;
+
+      outline: 1px solid #1E293B;
+    }
+
+    /* Subtle vertical separator lines between strips and grid */
+    .screen::before,
+    .screen::after {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0;
+      width: 1px;
+      background: linear-gradient(180deg, transparent 0%, #252D3D50 30%, #252D3D50 70%, transparent 100%);
+      pointer-events: none;
+      z-index: 10;
+    }
+    .screen::before { left: calc(8px + 112px); }   /* right edge of left strip  */
+    .screen::after  { right: calc(8px + 112px); }  /* left  edge of right strip */
+
+    /* ─────────────────────────────────────────────────────
+       SIDE STRIPS — 112 × 586 px each
+       [padding 8px] [strip 112px] [grid 784px] [strip 112px] [padding 8px]
+       8 + 112 + 784 + 112 + 8 = 1024 ✓
+       ───────────────────────────────────────────────────── */
+    .side-strip {
+      width: 112px;
+      height: 586px;   /* GRID_H = 3×190 + 2×8 = 586px */
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 8px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       TILE GRID — 784 × 586 px
+       cols: 4 × 190 + 3 × 8 = 784 ✓
+       rows: 3 × 190 + 2 × 8 = 586 ✓
+       ───────────────────────────────────────────────────── */
+    .tile-grid {
+      width: 784px;
+      height: 586px;
+      flex-shrink: 0;
+      display: grid;
+      grid-template-columns: repeat(4, 190px);
+      grid-template-rows: repeat(3, 190px);
+      gap: 8px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       BASE TILE — 190 × 190 px (PERFECT SQUARE, ENFORCED)
+       ───────────────────────────────────────────────────── */
+    .tile {
+      width: 190px;
+      height: 190px;
+      background: #1A1F2B;
+      border: 1px solid #252D3D;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+
+      /* Inner content centered via flexbox */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    /* ── Tile Header ── */
+    .tile-hdr {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 9px 12px 7px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748B;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #1E293B;
+    }
+
+    /* ── Tile Type Badge (top-right corner) ── */
+    .tile-badge {
+      position: absolute;
+      top: 7px; right: 10px;
+      font-size: 7px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      padding: 2px 6px;
+      border-radius: 3px;
+      border: 1px solid currentColor;
+      opacity: 0.45;
+    }
+
+    /* ── Corner bracket accents ── */
+    .corner {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      opacity: 0.25;
+    }
+    .corner.tl { top: 5px;  left: 5px;  border-top: 1.5px solid #0EA5E9; border-left: 1.5px solid #0EA5E9;  border-radius: 3px 0 0 0; }
+    .corner.tr { top: 5px;  right: 5px; border-top: 1.5px solid #0EA5E9; border-right: 1.5px solid #0EA5E9; border-radius: 0 3px 0 0; }
+    .corner.bl { bottom: 5px; left: 5px;  border-bottom: 1.5px solid #0EA5E9; border-left: 1.5px solid #0EA5E9;  border-radius: 0 0 0 3px; }
+    .corner.br { bottom: 5px; right: 5px; border-bottom: 1.5px solid #0EA5E9; border-right: 1.5px solid #0EA5E9; border-radius: 0 0 3px 0; }
+
+    /* ─────────────────────────────────────────────────────
+       TILE TYPE COLOUR THEMES
+       ───────────────────────────────────────────────────── */
+    /* Type 2 — Circular Progress */
+    .t2 { background: #111b15; border-color: #1a3020; }
+    .t2 .tile-badge { color: #10B981; }
+
+    /* Type 7 — Multi-Temperature */
+    .t7 { background: #1a120d; border-color: #2e1e16; }
+    .t7 .tile-badge { color: #F43F5E; }
+
+    /* Type 4 — Status + Number */
+    .t4 { background: #0e1520; border-color: #1a2535; }
+    .t4 .tile-badge { color: #94A3B8; }
+
+    /* Type 5 — Hero Number */
+    .t5 { background: #160d20; border-color: #261535; }
+    .t5 .tile-badge { color: #A78BFA; }
+
+    /* Type 6 — Drive Mode */
+    .t6 { background: #0c1f3a; border-color: #1a3360; }
+    .t6 .tile-badge { color: #0EA5E9; }
+
+    /* Type 3 — Progress Bar */
+    .t3 { background: #1a180d; border-color: #2e2a16; }
+    .t3 .tile-badge { color: #F59E0B; }
+
+    /* Type 1 — Live Graph */
+    .t1 { background: #0c1825; border-color: #1a2e40; }
+    .t1 .tile-badge { color: #0EA5E9; }
+
+    /* ─────────────────────────────────────────────────────
+       SHARED INNER ELEMENTS
+       ───────────────────────────────────────────────────── */
+    .tile-body {
+      margin-top: 30px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      width: 100%;
+      padding: 0 12px;
+    }
+
+    .hero-val {
+      font-size: 46px;
+      font-weight: 800;
+      color: #F1F5F9;
+      letter-spacing: -0.04em;
+      line-height: 1;
+    }
+
+    .hero-unit {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    /* Range bar */
+    .range-wrap {
+      width: 148px;
+    }
+    .range-track {
+      width: 100%;
+      height: 5px;
+      background: #1E293B;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    .range-fill {
+      height: 100%;
+      border-radius: 3px;
+      background: linear-gradient(90deg, #0EA5E9, #38BDF8);
+    }
+    .range-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 3px;
+    }
+    .rl { font-size: 7px; color: #475569; letter-spacing: 0.04em; }
+
+    /* Progress bar */
+    .prog-track {
+      width: 148px;
+      height: 12px;
+      background: #1E293B;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .prog-fill {
+      height: 100%;
+      border-radius: 6px;
+    }
+
+    /* Status dot */
+    .sdot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .sdot.green { background: #10B981; box-shadow: 0 0 5px #10B981; }
+    .sdot.red   { background: #F43F5E; box-shadow: 0 0 5px #F43F5E; }
+    .sdot.cyan  { background: #0EA5E9; box-shadow: 0 0 5px #0EA5E9; }
+
+    /* Pulsing ring around status dot */
+    @keyframes pulse-ring {
+      0%   { transform: scale(1); opacity: 0.7; }
+      100% { transform: scale(2.4); opacity: 0; }
+    }
+    .pulse-wrap { position: relative; display: inline-flex; }
+    .pulse-ring {
+      position: absolute;
+      inset: -3px;
+      border-radius: 50%;
+      animation: pulse-ring 1.6s ease-out infinite;
+    }
+    .pulse-ring.green { background: #10B981; }
+    .pulse-ring.cyan  { background: #0EA5E9; }
+
+    /* Mode badge */
+    .mode-badge {
+      background: #0C2340;
+      border: 1px solid #1E3A5F;
+      border-radius: 10px;
+      padding: 10px 22px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    @keyframes mode-pulse { 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+    .mode-dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      background: #0EA5E9;
+      box-shadow: 0 0 8px #0EA5E9;
+      animation: mode-pulse 2s ease-in-out infinite;
+    }
+    .mode-text {
+      font-size: 24px;
+      font-weight: 800;
+      color: #0EA5E9;
+      letter-spacing: 0.12em;
+    }
+
+    /* Accent underline bar */
+    .accent-bar {
+      width: 36px;
+      height: 3px;
+      border-radius: 2px;
+      background: linear-gradient(90deg, #A78BFA, #C4B5FD);
+      margin-top: 4px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       SIDE STRIP ELEMENTS
+       ───────────────────────────────────────────────────── */
+    .strip-icon {
+      width: 34px; height: 34px;
+      border-radius: 9px;
+      background: #141926;
+      border: 1px solid #252D3D;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #475569;
+    }
+    .strip-icon.on  { background: #0EA5E910; border-color: #0EA5E930; color: #0EA5E9; }
+    .strip-icon.ok  { background: #10B98110; border-color: #10B98130; color: #10B981; }
+    .strip-icon.warn{ background: #F59E0B10; border-color: #F59E0B30; color: #F59E0B; }
+
+    .strip-lbl {
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #334155;
+      text-align: center;
+    }
+
+    .strip-group { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+
+    .strip-divider { width: 28px; height: 1px; background: #1E293B; }
+
+    .menu-btn {
+      width: 78px; height: 32px;
+      border-radius: 7px;
+      background: #141926;
+      border: 1px solid #252D3D;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      cursor: pointer;
+    }
+    .menu-btn:hover { background: #1A1F2B; border-color: #334155; }
+    .menu-lbl {
+      font-size: 7px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #64748B;
+    }
+
+    .sys-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .sys-val  { font-size: 16px; font-weight: 800; color: #F1F5F9; letter-spacing: -0.02em; }
+    .sys-unit { font-size: 7px;  font-weight: 700; color: #475569; letter-spacing: 0.1em; text-transform: uppercase; }
+
+  </style>
+</head>
+<body>
+
+<!-- ── Dimension ruler (visual reference) ── -->
+<div class="ruler">
+  <span class="ruler-bracket">[</span>
+  <div class="ruler-segment">
+    <div class="ruler-line" style="width:8px;"></div>
+    <span>8px</span>
+  </div>
+  <span>+</span>
+  <div class="ruler-segment">
+    <div class="ruler-line" style="width:112px;"></div>
+    <span>112px strip</span>
+  </div>
+  <span>+</span>
+  <div class="ruler-segment">
+    <div class="ruler-line" style="width:784px;"></div>
+    <span>784px grid (4 × 190 + 3 × 8)</span>
+  </div>
+  <span>+</span>
+  <div class="ruler-segment">
+    <div class="ruler-line" style="width:112px;"></div>
+    <span>112px strip</span>
+  </div>
+  <span>+</span>
+  <div class="ruler-segment">
+    <div class="ruler-line" style="width:8px;"></div>
+    <span>8px</span>
+  </div>
+  <span class="ruler-bracket">] = 1024px</span>
+</div>
+
+<!-- ══════════════════════════════════════════════════════
+     SCREEN  1024 × 600 px
+     Padding: 7px top/bottom, 8px left/right
+     ══════════════════════════════════════════════════════ -->
+<div class="screen">
+
+  <!-- ════════════════════════════════
+       LEFT SIDE STRIP — 112 × 586 px
+       ════════════════════════════════ -->
+  <div class="side-strip">
+
+    <!-- Connection + BMS icons -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div class="strip-group">
+        <div class="strip-icon on">
+          <!-- WiFi icon -->
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+            <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="strip-lbl">WiFi</span>
+      </div>
+
+      <div class="strip-divider"></div>
+
+      <div class="strip-group">
+        <div class="strip-icon ok">
+          <!-- Battery icon -->
+          <svg width="16" height="14" viewBox="0 0 24 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="1" y="2" width="18" height="12" rx="2"/><path d="M23 7v4"/>
+            <rect x="3" y="4" width="12" height="8" rx="1" fill="currentColor" opacity="0.6"/>
+          </svg>
+        </div>
+        <span class="strip-lbl">BMS</span>
+      </div>
+
+      <div class="strip-divider"></div>
+
+      <div class="strip-group">
+        <div class="strip-icon warn">
+          <!-- Temp icon -->
+          <svg width="12" height="16" viewBox="0 0 14 22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M9 13.4V4a2 2 0 0 0-4 0v9.4a4 4 0 1 0 4 0z"/><circle cx="7" cy="18" r="2" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="strip-lbl">Temp</span>
+      </div>
+    </div>
+
+    <!-- Live indicator -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div class="pulse-wrap">
+          <div class="pulse-ring green"></div>
+          <div class="sdot green"></div>
+        </div>
+        <span style="font-size:8px;font-weight:800;color:#10B981;letter-spacing:0.12em;">LIVE</span>
+      </div>
+      <div style="font-size:7px;color:#334155;letter-spacing:0.1em;text-transform:uppercase;">System OK</div>
+    </div>
+
+    <!-- Version + state indicators -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:8px;">
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div class="sdot cyan"></div>
+        <span style="font-size:7px;font-weight:700;color:#0EA5E9;letter-spacing:0.08em;">CONNECTED</span>
+      </div>
+      <div class="strip-divider"></div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div class="sdot" style="background:#F59E0B;box-shadow:0 0 5px #F59E0B;"></div>
+        <span style="font-size:7px;font-weight:700;color:#F59E0B;letter-spacing:0.08em;">GPS FIX</span>
+      </div>
+      <div class="strip-divider"></div>
+      <span style="font-size:8px;font-weight:700;color:#334155;letter-spacing:0.06em;font-variant-numeric:tabular-nums;">v2.4.1</span>
+    </div>
+
+  </div><!-- end left strip -->
+
+  <!-- ════════════════════════════════
+       TILE GRID — 784 × 586 px
+       4 cols × 3 rows | gap 8px
+       All tiles: 190 × 190 px
+       ════════════════════════════════ -->
+  <div class="tile-grid">
+
+    <!-- ━━━━━━ ROW 1 ━━━━━━ -->
+
+    <!--
+      Tile 1 — col 1, row 1
+      Type 2 — Circular Progress — BATTERY SOC
+    -->
+    <div class="tile t2">
+      <div class="corner tl"></div><div class="corner tr"></div>
+      <div class="corner bl"></div><div class="corner br"></div>
+      <div class="tile-hdr">BATTERY SOC</div>
+      <span class="tile-badge">T2</span>
+      <div class="tile-body" style="margin-top:28px;gap:4px;">
+        <!-- 270° arc ring -->
+        <svg width="104" height="104" viewBox="0 0 104 104" style="overflow:visible;">
+          <defs>
+            <linearGradient id="g-soc" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#10B981"/>
+              <stop offset="100%" stop-color="#38BDF8"/>
+            </linearGradient>
+          </defs>
+          <!--
+            r=38  circ=238.76  270° arc = 179.07px
+            72% fill = 0.72 × 179.07 = 128.93px
+            rotate 135° so arc opens at bottom
+          -->
+          <circle cx="52" cy="52" r="38" fill="none" stroke="#1E293B" stroke-width="15"
+            stroke-dasharray="179.07 238.76" transform="rotate(135 52 52)" stroke-linecap="round"/>
+          <circle cx="52" cy="52" r="38" fill="none" stroke="url(#g-soc)" stroke-width="15"
+            stroke-dasharray="128.93 238.76" transform="rotate(135 52 52)" stroke-linecap="round"/>
+          <text x="52" y="48" text-anchor="middle" font-size="26" font-weight="800" fill="#F1F5F9">72</text>
+          <text x="52" y="62" text-anchor="middle" font-size="11" font-weight="600" fill="#10B981" letter-spacing="0.05em">%</text>
+        </svg>
+        <div class="range-wrap" style="margin-top:4px;">
+          <div class="range-track"><div class="range-fill" style="width:72%;"></div></div>
+          <div class="range-labels"><span class="rl">MIN 0</span><span class="rl">MAX 100</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      Tile 2 — col 2, row 1
+      Type 7 — Multi-Temperature — TEMPERATURES
+    -->
+    <div class="tile t7">
+      <div class="tile-hdr">TEMPERATURE <span style="float:right;color:#475569;">°C</span></div>
+      <span class="tile-badge">T7</span>
+      <div class="tile-body" style="margin-top:32px;gap:0;">
+        <div style="display:flex;gap:18px;align-items:flex-end;">
+          <!-- Sensor BAT -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span style="font-size:14px;font-weight:800;color:#10B981;">45°</span>
+            <div style="width:22px;height:56px;border-radius:11px;background:linear-gradient(180deg,#10B981 0%,#059669 100%);"></div>
+            <span style="font-size:7px;font-weight:700;color:#64748B;letter-spacing:0.1em;text-transform:uppercase;">BAT</span>
+          </div>
+          <!-- Sensor CTRL -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span style="font-size:14px;font-weight:800;color:#10B981;">38°</span>
+            <div style="width:22px;height:44px;border-radius:11px;background:linear-gradient(180deg,#10B981 0%,#059669 100%);"></div>
+            <span style="font-size:7px;font-weight:700;color:#64748B;letter-spacing:0.1em;text-transform:uppercase;">CTRL</span>
+          </div>
+          <!-- Sensor MOT — hottest -->
+          <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+            <span style="font-size:8px;color:#F43F5E;font-weight:800;">▲</span>
+            <span style="font-size:14px;font-weight:800;color:#F59E0B;">52°</span>
+            <div style="width:22px;height:66px;border-radius:11px;background:linear-gradient(180deg,#F59E0B 0%,#D97706 100%);box-shadow:0 0 10px #F59E0B40;"></div>
+            <span style="font-size:7px;font-weight:700;color:#64748B;letter-spacing:0.1em;text-transform:uppercase;">MOT</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;width:100%;margin-top:8px;">
+          <span class="rl">MIN 0°C</span><span class="rl">MAX 80°C</span>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      Tile 3 — col 3, row 1
+      Type 4 — Status + Number — BMS STATUS
+    -->
+    <div class="tile t4">
+      <div class="tile-hdr">BMS STATUS</div>
+      <span class="tile-badge">T4</span>
+      <div class="tile-body" style="gap:8px;">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div class="pulse-wrap">
+            <div class="pulse-ring green"></div>
+            <div class="sdot green"></div>
+          </div>
+          <span style="font-size:10px;font-weight:800;color:#10B981;letter-spacing:0.12em;">ACTIVE</span>
+        </div>
+        <div class="hero-val" style="font-size:44px;">96.4</div>
+        <div class="hero-unit" style="color:#64748B;font-size:11px;">Volts</div>
+      </div>
+    </div>
+
+    <!--
+      Tile 4 — col 4, row 1
+      Type 5 — Hero Number — ODOMETER
+    -->
+    <div class="tile t5">
+      <div class="tile-hdr">ODOMETER</div>
+      <span class="tile-badge">T5</span>
+      <div class="tile-body" style="gap:4px;">
+        <div class="hero-val">1248</div>
+        <div class="hero-unit" style="color:#A78BFA;">km</div>
+        <div class="accent-bar"></div>
+      </div>
+    </div>
+
+    <!-- ━━━━━━ ROW 2 ━━━━━━ -->
+
+    <!--
+      Tile 5 — col 1, row 2
+      Type 6 — Drive Mode — DRIVE MODE
+    -->
+    <div class="tile t6">
+      <div class="tile-hdr">DRIVE MODE</div>
+      <span class="tile-badge">T6</span>
+      <div class="tile-body" style="gap:10px;">
+        <div class="mode-badge">
+          <div class="mode-dot"></div>
+          <span class="mode-text">ECO</span>
+        </div>
+        <span style="font-size:8px;color:#475569;letter-spacing:0.1em;text-transform:uppercase;">Efficiency Mode</span>
+      </div>
+    </div>
+
+    <!--
+      Tile 6 — col 2, row 2
+      Type 3 — Progress Bar — THROTTLE
+    -->
+    <div class="tile t3">
+      <div class="tile-hdr">THROTTLE</div>
+      <span class="tile-badge">T3</span>
+      <div class="tile-body" style="gap:6px;">
+        <div style="display:flex;align-items:baseline;gap:4px;">
+          <div class="hero-val" style="font-size:48px;color:#F1F5F9;">68</div>
+          <div class="hero-unit" style="color:#F59E0B;font-size:13px;">%</div>
+        </div>
+        <div class="prog-track">
+          <div class="prog-fill" style="width:68%;background:linear-gradient(90deg,#F59E0B,#FCD34D);box-shadow:0 0 8px #F59E0B40;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;width:148px;">
+          <span class="rl">MIN 0</span><span class="rl">MAX 100</span>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      Tile 7 — col 3, row 2
+      Type 2 — Circular Progress — STATE OF HEALTH
+    -->
+    <div class="tile t2">
+      <div class="corner tl"></div><div class="corner br"></div>
+      <div class="tile-hdr">STATE OF HEALTH</div>
+      <span class="tile-badge">T2</span>
+      <div class="tile-body" style="margin-top:28px;gap:4px;">
+        <svg width="104" height="104" viewBox="0 0 104 104" style="overflow:visible;">
+          <defs>
+            <linearGradient id="g-soh" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#10B981"/>
+              <stop offset="100%" stop-color="#34D399"/>
+            </linearGradient>
+          </defs>
+          <!-- 86% fill = 0.86 × 179.07 = 153.99px -->
+          <circle cx="52" cy="52" r="38" fill="none" stroke="#1E293B" stroke-width="15"
+            stroke-dasharray="179.07 238.76" transform="rotate(135 52 52)" stroke-linecap="round"/>
+          <circle cx="52" cy="52" r="38" fill="none" stroke="url(#g-soh)" stroke-width="15"
+            stroke-dasharray="153.99 238.76" transform="rotate(135 52 52)" stroke-linecap="round"/>
+          <text x="52" y="48" text-anchor="middle" font-size="26" font-weight="800" fill="#F1F5F9">86</text>
+          <text x="52" y="62" text-anchor="middle" font-size="11" font-weight="600" fill="#10B981" letter-spacing="0.05em">%</text>
+        </svg>
+        <div class="range-wrap" style="margin-top:4px;">
+          <div class="range-track"><div class="range-fill" style="width:86%;background:linear-gradient(90deg,#10B981,#34D399);"></div></div>
+          <div class="range-labels"><span class="rl">MIN 0</span><span class="rl">MAX 100</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      Tile 8 — col 4, row 2
+      Type 5 — Hero Number — DTE RANGE
+    -->
+    <div class="tile t5">
+      <div class="tile-hdr">DTE RANGE</div>
+      <span class="tile-badge">T5</span>
+      <div class="tile-body" style="gap:4px;">
+        <div class="hero-val">142</div>
+        <div class="hero-unit" style="color:#A78BFA;">km</div>
+        <div class="accent-bar"></div>
+      </div>
+    </div>
+
+    <!-- ━━━━━━ ROW 3 ━━━━━━ -->
+
+    <!--
+      Tile 9 — col 1, row 3
+      Type 1 — Live Graph — SPEED
+    -->
+    <div class="tile t1">
+      <div class="tile-hdr">SPEED</div>
+      <span class="tile-badge">T1</span>
+      <div class="tile-body" style="margin-top:30px;padding:0 10px;gap:4px;">
+        <svg width="164" height="80" viewBox="0 0 164 80">
+          <defs>
+            <linearGradient id="g-area" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.22"/>
+              <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0.01"/>
+            </linearGradient>
+          </defs>
+          <!-- Y-axis grid lines & labels -->
+          <line x1="28" y1="2"  x2="164" y2="2"  stroke="#1E293B" stroke-width="1" stroke-dasharray="3,4"/>
+          <line x1="28" y1="22" x2="164" y2="22" stroke="#1E293B" stroke-width="1" stroke-dasharray="3,4"/>
+          <line x1="28" y1="42" x2="164" y2="42" stroke="#1E293B" stroke-width="1" stroke-dasharray="3,4"/>
+          <line x1="28" y1="62" x2="164" y2="62" stroke="#1E293B" stroke-width="1" stroke-dasharray="3,4"/>
+          <text x="24" y="6"  text-anchor="end" font-size="8" fill="#334155">60</text>
+          <text x="24" y="26" text-anchor="end" font-size="8" fill="#334155">45</text>
+          <text x="24" y="46" text-anchor="end" font-size="8" fill="#334155">30</text>
+          <text x="24" y="66" text-anchor="end" font-size="8" fill="#334155">15</text>
+          <!-- Area fill -->
+          <path d="M30,68 C50,60 70,52 90,40 C110,28 130,32 158,18 L158,80 L30,80 Z"
+            fill="url(#g-area)"/>
+          <!-- Line -->
+          <path d="M30,68 C50,60 70,52 90,40 C110,28 130,32 158,18"
+            fill="none" stroke="#0EA5E9" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Live dot -->
+          <circle cx="158" cy="18" r="5" fill="#0EA5E9" opacity="0.2"/>
+          <circle cx="158" cy="18" r="3" fill="#38BDF8"/>
+          <!-- Live value badge -->
+          <rect x="134" y="4" width="28" height="14" rx="4" fill="#0EA5E9"/>
+          <text x="148" y="14" text-anchor="middle" font-size="9" font-weight="800" fill="white">42</text>
+          <!-- X axis label: now -->
+          <text x="158" y="78" text-anchor="middle" font-size="7" fill="#334155">now</text>
+          <text x="30"  y="78" text-anchor="middle" font-size="7" fill="#334155">-60s</text>
+        </svg>
+        <div class="range-wrap">
+          <div class="range-track"><div class="range-fill" style="width:70%;"></div></div>
+          <div class="range-labels"><span class="rl">0 km/h</span><span class="rl">60 km/h</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      Tile 10 — col 2, row 3
+      Type 4 — Status + Number — BRAKE STATUS
+    -->
+    <div class="tile t4">
+      <div class="tile-hdr">BRAKE STATUS</div>
+      <span class="tile-badge">T4</span>
+      <div class="tile-body" style="gap:8px;">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div class="sdot red"></div>
+          <span style="font-size:10px;font-weight:800;color:#F43F5E;letter-spacing:0.12em;">OFF</span>
+        </div>
+        <div class="hero-val" style="font-size:48px;">0</div>
+        <div class="hero-unit" style="color:#64748B;font-size:11px;">Press %</div>
+      </div>
+    </div>
+
+    <!--
+      Tile 11 — col 3, row 3
+      Type 4 — Status + Number — REGEN BRAKE
+    -->
+    <div class="tile t4">
+      <div class="tile-hdr">REGEN BRAKE</div>
+      <span class="tile-badge">T4</span>
+      <div class="tile-body" style="gap:8px;">
+        <div style="display:flex;align-items:center;gap:7px;">
+          <div class="pulse-wrap">
+            <div class="pulse-ring green"></div>
+            <div class="sdot green"></div>
+          </div>
+          <span style="font-size:10px;font-weight:800;color:#10B981;letter-spacing:0.12em;">ACTIVE</span>
+        </div>
+        <div class="hero-val" style="font-size:44px;">2.4</div>
+        <div class="hero-unit" style="color:#64748B;font-size:11px;">kW</div>
+      </div>
+    </div>
+
+    <!--
+      Tile 12 — col 4, row 3
+      Type 5 — Hero Number — TRIP DISTANCE
+    -->
+    <div class="tile t5">
+      <div class="tile-hdr">TRIP DISTANCE</div>
+      <span class="tile-badge">T5</span>
+      <div class="tile-body" style="gap:4px;">
+        <div class="hero-val" style="font-size:42px;">18.7</div>
+        <div class="hero-unit" style="color:#A78BFA;">km</div>
+        <div class="accent-bar"></div>
+      </div>
+    </div>
+
+  </div><!-- end .tile-grid -->
+
+  <!-- ════════════════════════════════
+       RIGHT SIDE STRIP — 112 × 586 px
+       ════════════════════════════════ -->
+  <div class="side-strip">
+
+    <!-- Menu + Time -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div class="menu-btn">
+        <svg width="13" height="11" viewBox="0 0 13 11" fill="none" stroke="#64748B" stroke-width="1.8" stroke-linecap="round">
+          <line x1="0" y1="1" x2="13" y2="1"/>
+          <line x1="0" y1="5.5" x2="13" y2="5.5"/>
+          <line x1="0" y1="10" x2="13" y2="10"/>
+        </svg>
+        <span class="menu-lbl">MENU</span>
+      </div>
+      <div style="font-size:15px;font-weight:800;color:#F1F5F9;letter-spacing:0.08em;font-variant-numeric:tabular-nums;">09:42</div>
+      <div style="font-size:8px;color:#334155;letter-spacing:0.1em;text-transform:uppercase;">AM</div>
+    </div>
+
+    <div class="strip-divider"></div>
+
+    <!-- Live speed + power quick readout -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:14px;">
+      <div class="sys-stat">
+        <div class="sys-val" style="color:#0EA5E9;">42</div>
+        <div class="sys-unit">km/h</div>
+      </div>
+      <div class="strip-divider"></div>
+      <div class="sys-stat">
+        <div class="sys-val">3.2</div>
+        <div class="sys-unit">kW</div>
+      </div>
+      <div class="strip-divider"></div>
+      <div class="sys-stat">
+        <div class="sys-val" style="color:#10B981;font-size:13px;">+1.1</div>
+        <div class="sys-unit">kW regen</div>
+      </div>
+    </div>
+
+    <div class="strip-divider"></div>
+
+    <!-- Settings + online -->
+    <div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+      <div class="strip-group">
+        <div class="strip-icon">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/>
+          </svg>
+        </div>
+        <span class="strip-lbl">Settings</span>
+      </div>
+      <div class="strip-divider"></div>
+      <div style="display:flex;align-items:center;gap:5px;">
+        <div class="pulse-wrap">
+          <div class="pulse-ring cyan" style="animation-duration:2s;"></div>
+          <div class="sdot cyan"></div>
+        </div>
+        <span style="font-size:7px;font-weight:800;color:#0EA5E9;letter-spacing:0.1em;">ONLINE</span>
+      </div>
+    </div>
+
+  </div><!-- end right strip -->
+
+</div><!-- end .screen -->
+
+<!-- ── Dimension annotation ── -->
+<div style="display:flex;gap:24px;font-family:monospace;font-size:9px;color:#334155;letter-spacing:0.06em;">
+  <span>Screen: <strong style="color:#475569;">1024 × 600 px</strong></span>
+  <span>Tile: <strong style="color:#475569;">190 × 190 px</strong></span>
+  <span>Gap: <strong style="color:#475569;">8 px</strong></span>
+  <span>Pad H: <strong style="color:#475569;">8 + 8 px</strong></span>
+  <span>Pad V: <strong style="color:#475569;">7 + 7 px</strong></span>
+  <span>Side strips: <strong style="color:#475569;">112 px each</strong></span>
+  <span>Grid: <strong style="color:#475569;">784 × 586 px</strong></span>
+</div>
+
+</body>
+</html>

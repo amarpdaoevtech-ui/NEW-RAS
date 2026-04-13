@@ -1,0 +1,260 @@
+{
+  "grid": {
+    "columns": 7,
+    "rows": 4,
+    "colWidth": 128,
+    "rowHeight": 128,
+    "gap": 16,
+    "headerH": 24,
+    "footerH": 16,
+    "paddingX": 16,
+    "paddingY": 0
+  },
+  "tiles": [
+    {
+      "id": "tile_speed",
+      "type": "TileType1",
+      "col": 1, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "speed_kmph",
+        "label": "Live Speed",
+        "unit": "km/h",
+        "precision": 1,
+        "color": "#ff6a00"
+      }
+    },
+    {
+      "id": "tile_soc",
+      "type": "TileType2",
+      "col": 2, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "soc",
+        "label": "Battery SOC",
+        "unit": "%",
+        "ui": { "min": 0, "max": 100, "warnLow": 20, "warnHigh": 85 }
+      }
+    },
+    {
+      "id": "tile_voltage",
+      "type": "TileType1",
+      "col": 3, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "voltage",
+        "label": "Pack Voltage",
+        "unit": "V",
+        "precision": 1,
+        "color": "#a78bfa"
+      }
+    },
+    {
+      "id": "tile_power",
+      "type": "TileType1",
+      "col": 4, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "power",
+        "label": "Power Out",
+        "unit": "W",
+        "precision": 0,
+        "color": "#f59e0b"
+      }
+    },
+    {
+      "id": "tile_dte",
+      "type": "TileType1",
+      "col": 5, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "dte",
+        "label": "Range Left",
+        "unit": "km",
+        "precision": 1,
+        "color": "#00e87a"
+      }
+    },
+    {
+      "id": "tile_mode",
+      "type": "TileType6",
+      "col": 6, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "speed_mode",
+        "label": "Ride Mode",
+        "state_1_label": "LOW",
+        "state_2_label": "MED",
+        "state_3_label": "HIGH",
+        "state_4_label": "",
+        "state_1_color": "#38BDF8",
+        "state_2_color": "#F59E0B",
+        "state_3_color": "#FF3B3B"
+      }
+    },
+    {
+      "id": "tile_conn",
+      "type": "TileType7",
+      "col": 7, "row": 1, "w": 1, "h": 1,
+      "props": {
+        "statusKey": "connected",
+        "uptimeKey": "session_uptime",
+        "label": "Bike Power",
+        "activeValue": true,
+        "showUptime": true
+      }
+    },
+    {
+      "id": "tile_graph",
+      "type": "TileType5",
+      "col": 1, "row": 2, "w": 4, "h": 2,
+      "props": {
+        "label": "Live Telemetry"
+      }
+    },
+    {
+      "id": "tile_temp",
+      "type": "TileType3",
+      "col": 5, "row": 2, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "temperature",
+        "label": "Pack Temp",
+        "unit": "°C",
+        "ui": { "min": 0, "max": 85 }
+      }
+    },
+    {
+      "id": "tile_current",
+      "type": "TileType1",
+      "col": 6, "row": 2, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "current",
+        "label": "Current Draw",
+        "unit": "A",
+        "precision": 1,
+        "color": "#00b4ff"
+      }
+    },
+    {
+      "id": "tile_throttle",
+      "type": "TileType4",
+      "col": 7, "row": 2, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "throttle",
+        "label": "Throttle",
+        "unit": "%",
+        "ui": { "min": 0, "max": 100, "warnAt": 70, "dangerAt": 90 }
+      }
+    },
+    {
+      "id": "tile_ride",
+      "type": "TileType1",
+      "col": 5, "row": 3, "w": 1, "h": 1,
+      "props": {
+        "numberKey": "current_ride_distance",
+        "label": "This Ride",
+        "unit": "km",
+        "precision": 1,
+        "color": "#f59e0b"
+      }
+    },
+    {
+      "id": "tile_volt_bar",
+      "type": "TileType2",
+      "col": 6, "row": 3, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "voltage",
+        "label": "Pack Volt",
+        "unit": "V",
+        "ui": { "min": 40, "max": 100 }
+      }
+    },
+    {
+      "id": "tile_odo",
+      "type": "TileType1",
+      "col": 7, "row": 3, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "total_distance",
+        "label": "Odometer",
+        "unit": "km",
+        "precision": 1,
+        "color": "#00b4ff"
+      }
+    },
+    {
+      "id": "tile_power_bar",
+      "type": "TileType2",
+      "col": 1, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "power",
+        "label": "Power",
+        "unit": "W",
+        "ui": { "min": 0, "max": 6000 }
+      }
+    },
+    {
+      "id": "tile_dte2",
+      "type": "TileType1",
+      "col": 2, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "dte",
+        "label": "Range",
+        "unit": "km",
+        "precision": 1,
+        "color": "#00e87a"
+      }
+    },
+    {
+      "id": "tile_curr_bar",
+      "type": "TileType2",
+      "col": 3, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "current",
+        "label": "Current",
+        "unit": "A",
+        "ui": { "min": -10, "max": 60 }
+      }
+    },
+    {
+      "id": "tile_trip",
+      "type": "TileType1",
+      "col": 4, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "numberKey": "current_ride_distance",
+        "label": "Trip",
+        "unit": "km",
+        "precision": 1,
+        "color": "#f59e0b"
+      }
+    },
+    {
+      "id": "tile_soc_bar",
+      "type": "TileType2",
+      "col": 5, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "soc",
+        "label": "Battery %",
+        "unit": "%",
+        "ui": { "min": 0, "max": 100 }
+      }
+    },
+    {
+      "id": "tile_total_dist",
+      "type": "TileType1",
+      "col": 6, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "total_distance",
+        "label": "Total Dist",
+        "unit": "km",
+        "precision": 1,
+        "color": "#64748b"
+      }
+    },
+    {
+      "id": "tile_spd2",
+      "type": "TileType1",
+      "col": 7, "row": 4, "w": 1, "h": 1,
+      "props": {
+        "dataKey": "speed_kmph",
+        "label": "Speed",
+        "unit": "km/h",
+        "precision": 1,
+        "color": "#ff6a00"
+      }
+    }
+  ]
+}
