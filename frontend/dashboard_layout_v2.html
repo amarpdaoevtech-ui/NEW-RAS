@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>EV Dashboard v2 — 5-Col Square Grid (1024×600)</title>
+  <style>
+    /* ── Reset ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #040609;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      min-height: 100vh;
+      font-family: 'Segoe UI', system-ui, -apple-system, monospace;
+      padding: 24px;
+      gap: 12px;
+    }
+
+    .page-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #334155;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       SCREEN WRAPPER — 1024 × (auto, preview mode)
+       In production: height: 600px; overflow: hidden;
+       ───────────────────────────────────────────────────── */
+    .screen {
+      width: 1024px;
+
+      /*
+        Production setting: height: 600px; overflow: hidden;
+        Preview mode: height auto so all 4 rows are visible.
+        Rows 1-3 fit in ~594px; row 4 (BIG lower half + T14-T16)
+        extends beyond 600px — shown here for layout verification.
+      */
+      background: #0F1218;
+      position: relative;
+
+      /*
+        Padding: 8px all sides (as specified)
+        Usable: 1008 × 584 px
+        Grid width: 5×178 + 4×30 = 1010 px (2px over — negligible)
+      */
+      padding: 8px;
+    }
+
+    /* 600px viewport boundary indicator */
+    .viewport-line {
+      position: absolute;
+      top: 600px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: repeating-linear-gradient(
+        90deg,
+        #F43F5E 0px, #F43F5E 8px,
+        transparent 8px, transparent 14px
+      );
+      z-index: 100;
+      pointer-events: none;
+    }
+    .viewport-label {
+      position: absolute;
+      top: 604px;
+      right: 12px;
+      font-size: 8px;
+      font-weight: 700;
+      color: #F43F5E;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      z-index: 100;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       TILE GRID
+       ── Exact spec:
+          grid-template-columns: repeat(5, 178px)
+          grid-template-rows:    repeat(3, 178px)   ← 3 explicit rows
+          grid-auto-rows:        178px              ← row 4 implicit (BIG tile)
+          gap: 30px
+       ── Total grid: 1010 × 802 px (4 rows)
+       ───────────────────────────────────────────── */
+    .tile-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 178px);
+      grid-template-rows: repeat(3, 178px);
+      grid-auto-rows: 178px;
+      gap: 30px;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       BASE TILE — 178 × 178 px (PERFECT SQUARE)
+       ───────────────────────────────────────────────────── */
+    .tile {
+      width: 178px;
+      height: 178px;
+
+      /* Square enforcement: never stretch */
+      flex-shrink: 0;
+      flex-grow: 0;
+
+      background: #1A1F2B;
+      border: 1px solid #252D3D;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+
+      /* Inner content via flexbox */
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    /* ─────────────────────────────────────────────────────
+       MERGED TILE — 386 × 386 px (2×178 + 1×30 = 386 ✓)
+       grid-column: 1 / span 2
+       grid-row: 3 / span 2
+       ───────────────────────────────────────────────────── */
+    .tile-big {
+      grid-column: 1 / span 2;
+      grid-row:    3 / span 2;
+      width:  386px;   /* 2 × 178 + 1 × 30 = 386px */
+      height: 386px;   /* 2 × 178 + 1 × 30 = 386px */
+      border-radius: 14px;
+    }
+
+    /* ── Tile Header ── */
+    .tile-hdr {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      padding: 8px 11px 7px;
+      font-size: 9px;
+      font-weight: 700;
+      color: #64748B;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      border-bottom: 1px solid #1E293B;
+    }
+    .tile-big .tile-hdr {
+      padding: 12px 16px 9px;
+      font-size: 10px;
+    }
+
+    /* ── Tile ID badge (top-right) ── */
+    .tile-id {
+      position: absolute;
+      top: 7px; right: 9px;
+      font-size: 7px;
+      font-weight: 800;
+      letter-spacing: 0.1em;
+      padding: 2px 5px;
+      border-radius: 3px;
+      border: 1px solid currentColor;
+      opacity: 0.4;
+    }
+
+    /* ── Corner bracket accents ── */
+    .cr {
+      position: absolute;
+      width: 12px; height: 12px;
+      opacity: 0.2;
+    }
+    .cr.tl { top:5px; left:5px;  border-top:1.5px solid #0EA5E9; border-left:1.5px solid #0EA5E9;  border-radius:3px 0 0 0; }
+    .cr.tr { top:5px; right:5px; border-top:1.5px solid #0EA5E9; border-right:1.5px solid #0EA5E9; border-radius:0 3px 0 0; }
+    .cr.bl { bottom:5px; left:5px;  border-bottom:1.5px solid #0EA5E9; border-left:1.5px solid #0EA5E9;  border-radius:0 0 0 3px; }
+    .cr.br { bottom:5px; right:5px; border-bottom:1.5px solid #0EA5E9; border-right:1.5px solid #0EA5E9; border-radius:0 0 3px 0; }
+    .tile-big .cr { width:18px; height:18px; }
+    .tile-big .cr { opacity:0.3; }
+
+    /* ─────────────────────────────────────────────────────
+       TILE TYPE COLOUR THEMES
+       ───────────────────────────────────────────────────── */
+    .tt2  { background:#0d1e16; border-color:#183224; }  /* Circular — green   */
+    .tt7  { background:#1a120d; border-color:#2e1e16; }  /* Temp     — amber   */
+    .tt4  { background:#0e1520; border-color:#192535; }  /* Status   — slate   */
+    .tt5  { background:#15102a; border-color:#23185a; }  /* Hero     — purple  */
+    .tt6  { background:#0c1f3a; border-color:#1a3360; }  /* Mode     — cyan    */
+    .tt3  { background:#1a180d; border-color:#2e2a16; }  /* Progress — amber   */
+    .tt1  { background:#0a1520; border-color:#182a3f; }  /* Graph    — cyan    */
+
+    .tt2 .tile-id  { color: #10B981; }
+    .tt7 .tile-id  { color: #F43F5E; }
+    .tt4 .tile-id  { color: #94A3B8; }
+    .tt5 .tile-id  { color: #A78BFA; }
+    .tt6 .tile-id  { color: #0EA5E9; }
+    .tt3 .tile-id  { color: #F59E0B; }
+    .tt1 .tile-id  { color: #38BDF8; }
+
+    /* ─────────────────────────────────────────────────────
+       SHARED INNER LAYOUT HELPERS
+       ───────────────────────────────────────────────────── */
+    .tile-body {
+      margin-top: 28px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+      width: 100%;
+      padding: 0 11px;
+      flex: 1;
+    }
+    .tile-big .tile-body { margin-top: 42px; gap: 8px; }
+
+    .v-big   { font-size: 42px; font-weight: 800; color: #F1F5F9; letter-spacing: -0.04em; line-height: 1; }
+    .v-hero  { font-size: 36px; font-weight: 800; color: #F1F5F9; letter-spacing: -0.04em; line-height: 1; }
+    .v-unit  { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+    .v-lbl   { font-size: 8px;  font-weight: 600; color: #475569; letter-spacing: 0.08em; }
+
+    .accent-line {
+      width: 32px; height: 3px; border-radius: 2px;
+      background: linear-gradient(90deg, #A78BFA, #C4B5FD);
+      margin-top: 3px;
+    }
+
+    /* Range bar (shared) */
+    .rbar-wrap { width: 138px; }
+    .rbar-track { width: 100%; height: 5px; background: #1E293B; border-radius: 3px; overflow: hidden; }
+    .rbar-fill  { height: 100%; border-radius: 3px; }
+    .rbar-lbls  { display: flex; justify-content: space-between; margin-top: 3px; }
+    .rl { font-size: 7px; color: #475569; }
+
+    /* Progress bar */
+    .pbar-wrap  { width: 138px; }
+    .pbar-track { width: 100%; height: 11px; background: #1E293B; border-radius: 6px; overflow: hidden; }
+    .pbar-fill  { height: 100%; border-radius: 6px; }
+
+    /* Status badge */
+    .status-row { display: flex; align-items: center; gap: 6px; }
+    .sdot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+    .sdot.g { background: #10B981; box-shadow: 0 0 5px #10B981; }
+    .sdot.r { background: #F43F5E; box-shadow: 0 0 5px #F43F5E; }
+    .sdot.c { background: #0EA5E9; box-shadow: 0 0 5px #0EA5E9; }
+    .sdot.a { background: #F59E0B; box-shadow: 0 0 5px #F59E0B; }
+
+    .stxt { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; }
+
+    /* Ring SVG sizing for 178px tiles */
+    .ring-wrap { position: relative; width: 96px; height: 96px; }
+    .ring-val  {
+      position: absolute; inset: 0;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+    }
+
+    /* Mode badge */
+    .mode-badge {
+      background: #0C2340; border: 1px solid #1E3A5F; border-radius: 9px;
+      padding: 8px 18px;
+      display: flex; align-items: center; gap: 9px;
+    }
+    .mode-dot {
+      width: 11px; height: 11px; border-radius: 50%;
+      background: #0EA5E9; box-shadow: 0 0 7px #0EA5E9;
+    }
+    .mode-text { font-size: 20px; font-weight: 800; color: #0EA5E9; letter-spacing: 0.12em; }
+
+    /* Temp bars */
+    .temp-bars { display: flex; gap: 14px; align-items: flex-end; }
+    .temp-col  { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .temp-bar  { width: 20px; border-radius: 10px; }
+    .temp-val  { font-size: 12px; font-weight: 800; }
+    .temp-lbl  { font-size: 7px; font-weight: 700; color: #64748B; letter-spacing: 0.1em; text-transform: uppercase; }
+
+    /* ─────────────────────────────────────────────────────
+       BIG TILE — Live graph (larger SVG, full 386px)
+       ───────────────────────────────────────────────────── */
+    .big-graph-body {
+      margin-top: 44px;
+      padding: 0 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      width: 100%;
+      flex: 1;
+    }
+
+    /* ── Legend row at bottom of BIG tile ── */
+    .big-legend {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0 2px;
+      margin-top: 6px;
+    }
+    .big-stat {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2px;
+    }
+    .big-stat-val  { font-size: 22px; font-weight: 800; color: #F1F5F9; letter-spacing: -0.03em; }
+    .big-stat-unit { font-size: 8px;  font-weight: 700; color: #475569; letter-spacing: 0.1em; text-transform: uppercase; }
+
+    .big-rbar-wrap  { width: 340px; }
+    .big-rbar-track { width: 100%; height: 6px; background: #1E293B; border-radius: 3px; overflow: hidden; }
+    .big-rbar-fill  {
+      height: 100%; border-radius: 3px;
+      background: linear-gradient(90deg, #0EA5E9, #38BDF8);
+    }
+    .big-rbar-lbls  { display: flex; justify-content: space-between; margin-top: 3px; }
+
+    /* ─────────────────────────────────────────────────────
+       ANNOTATION STRIP BELOW SCREEN
+       ───────────────────────────────────────────────────── */
+    .annotations {
+      display: flex;
+      gap: 20px;
+      font-family: monospace;
+      font-size: 9px;
+      color: #334155;
+      letter-spacing: 0.06em;
+    }
+    .annotations strong { color: #475569; }
+
+    .spec-table {
+      font-family: monospace;
+      font-size: 9px;
+      color: #334155;
+      letter-spacing: 0.06em;
+      display: flex;
+      gap: 40px;
+    }
+    .spec-col { display: flex; flex-direction: column; gap: 3px; }
+    .spec-row { display: flex; gap: 8px; }
+    .spec-key { color: #475569; }
+    .spec-val { color: #64748B; }
+    .spec-ok  { color: #10B981; }
+    .spec-note{ color: #F59E0B; }
+
+  </style>
+</head>
+<body>
+
+<div class="page-title">EV Dashboard v2 — 5-column square grid layout</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     SCREEN  1024 px wide
+     Production: 1024 × 600 px, overflow: hidden
+     Preview: full height shown — viewport line marks 600 px
+     ══════════════════════════════════════════════════════════════ -->
+<div class="screen">
+
+  <!-- 600px viewport boundary indicator (visible in preview mode) -->
+  <div class="viewport-line"></div>
+  <div class="viewport-label">600px viewport boundary</div>
+
+  <!-- ════════════════════════════════════════════════════════
+       TILE GRID
+       grid-template-columns: repeat(5, 178px)
+       grid-template-rows:    repeat(3, 178px)
+       grid-auto-rows:        178px
+       gap: 30px
+       ════════════════════════════════════════════════════════ -->
+  <div class="tile-grid">
+
+    <!-- ══════════ ROW 1 — T1 … T5 ══════════ -->
+
+    <!--
+      T1 — col 1, row 1
+      Type 2 — Circular Progress — BATTERY SOC
+    -->
+    <div class="tile tt2">
+      <div class="cr tl"></div><div class="cr tr"></div>
+      <div class="cr bl"></div><div class="cr br"></div>
+      <div class="tile-hdr">BATTERY SOC</div>
+      <span class="tile-id">T2</span>
+      <div class="tile-body" style="margin-top:26px;">
+        <div class="ring-wrap">
+          <svg width="96" height="96" viewBox="0 0 96 96" style="overflow:visible">
+            <defs>
+              <linearGradient id="g-soc">
+                <stop offset="0%" stop-color="#10B981"/>
+                <stop offset="100%" stop-color="#38BDF8"/>
+              </linearGradient>
+            </defs>
+            <!-- r=34 circ=213.6 270deg arc=160.2 74%→118.5 rotate135 -->
+            <circle cx="48" cy="48" r="34" fill="none" stroke="#1E293B" stroke-width="13"
+              stroke-dasharray="160.2 213.6" transform="rotate(135 48 48)" stroke-linecap="round"/>
+            <circle cx="48" cy="48" r="34" fill="none" stroke="url(#g-soc)" stroke-width="13"
+              stroke-dasharray="118.5 213.6" transform="rotate(135 48 48)" stroke-linecap="round"/>
+          </svg>
+          <div class="ring-val">
+            <span style="font-size:22px;font-weight:800;color:#F1F5F9;">74</span>
+            <span style="font-size:9px;font-weight:700;color:#10B981;letter-spacing:.05em;">%</span>
+          </div>
+        </div>
+        <div class="rbar-wrap" style="margin-top:3px;">
+          <div class="rbar-track"><div class="rbar-fill" style="width:74%;background:linear-gradient(90deg,#10B981,#38BDF8);"></div></div>
+          <div class="rbar-lbls"><span class="rl">0</span><span class="rl">100%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      T2 — col 2, row 1
+      Type 5 — Hero Number — SPEED
+    -->
+    <div class="tile tt5">
+      <div class="tile-hdr">SPEED</div>
+      <span class="tile-id">T5</span>
+      <div class="tile-body">
+        <div class="v-big">42</div>
+        <div class="v-unit" style="color:#A78BFA;">km/h</div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+    <!--
+      T3 — col 3, row 1
+      Type 4 — Status + Number — PACK VOLTAGE
+    -->
+    <div class="tile tt4">
+      <div class="tile-hdr">PACK VOLTAGE</div>
+      <span class="tile-id">T4</span>
+      <div class="tile-body" style="gap:8px;">
+        <div class="status-row">
+          <div class="sdot g"></div>
+          <span class="stxt" style="color:#10B981;">ACTIVE</span>
+        </div>
+        <div class="v-hero" style="font-size:34px;">96.4</div>
+        <div class="v-unit" style="color:#64748B;">Volts</div>
+      </div>
+    </div>
+
+    <!--
+      T4 — col 4, row 1
+      Type 7 — Multi-Temperature — TEMPERATURE
+    -->
+    <div class="tile tt7">
+      <div class="tile-hdr">TEMPERATURE <span style="float:right;color:#475569;">°C</span></div>
+      <span class="tile-id">T7</span>
+      <div class="tile-body" style="margin-top:30px;gap:0;justify-content:flex-start;">
+        <div class="temp-bars">
+          <div class="temp-col">
+            <span class="temp-val" style="color:#10B981;">45°</span>
+            <div class="temp-bar" style="height:46px;background:linear-gradient(180deg,#10B981,#059669);"></div>
+            <span class="temp-lbl">BAT</span>
+          </div>
+          <div class="temp-col">
+            <span class="temp-val" style="color:#10B981;">38°</span>
+            <div class="temp-bar" style="height:36px;background:linear-gradient(180deg,#10B981,#059669);"></div>
+            <span class="temp-lbl">CTRL</span>
+          </div>
+          <div class="temp-col">
+            <span style="font-size:8px;color:#F43F5E;font-weight:800;margin-bottom:1px;">▲</span>
+            <span class="temp-val" style="color:#F59E0B;">52°</span>
+            <div class="temp-bar" style="height:56px;background:linear-gradient(180deg,#F59E0B,#D97706);box-shadow:0 0 8px #F59E0B40;"></div>
+            <span class="temp-lbl">MOT</span>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;width:100%;margin-top:7px;">
+          <span class="rl">MIN 0°C</span><span class="rl">MAX 80°C</span>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      T5 — col 5, row 1
+      Type 6 — Drive Mode — DRIVE MODE
+    -->
+    <div class="tile tt6">
+      <div class="tile-hdr">DRIVE MODE</div>
+      <span class="tile-id">T6</span>
+      <div class="tile-body" style="gap:8px;">
+        <div class="mode-badge">
+          <div class="mode-dot"></div>
+          <span class="mode-text">ECO</span>
+        </div>
+        <span style="font-size:7px;color:#475569;letter-spacing:.1em;text-transform:uppercase;">Efficiency Active</span>
+      </div>
+    </div>
+
+    <!-- ══════════ ROW 2 — T6 … T10 ══════════ -->
+
+    <!--
+      T6 — col 1, row 2
+      Type 3 — Progress Bar — THROTTLE
+    -->
+    <div class="tile tt3">
+      <div class="tile-hdr">THROTTLE</div>
+      <span class="tile-id">T3</span>
+      <div class="tile-body" style="gap:6px;">
+        <div style="display:flex;align-items:baseline;gap:3px;">
+          <div class="v-hero" style="font-size:40px;">68</div>
+          <div class="v-unit" style="color:#F59E0B;font-size:12px;">%</div>
+        </div>
+        <div class="pbar-wrap">
+          <div class="pbar-track">
+            <div class="pbar-fill" style="width:68%;background:linear-gradient(90deg,#F59E0B,#FCD34D);"></div>
+          </div>
+        </div>
+        <div class="rbar-lbls" style="width:138px;">
+          <span class="rl">0</span><span class="rl">100%</span>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      T7 — col 2, row 2
+      Type 2 — Circular Progress — STATE OF HEALTH
+    -->
+    <div class="tile tt2">
+      <div class="cr tl"></div><div class="cr br"></div>
+      <div class="tile-hdr">STATE OF HEALTH</div>
+      <span class="tile-id">T2</span>
+      <div class="tile-body" style="margin-top:26px;">
+        <div class="ring-wrap">
+          <svg width="96" height="96" viewBox="0 0 96 96" style="overflow:visible">
+            <defs>
+              <linearGradient id="g-soh">
+                <stop offset="0%" stop-color="#10B981"/>
+                <stop offset="100%" stop-color="#34D399"/>
+              </linearGradient>
+            </defs>
+            <!-- 86% → 0.86 × 160.2 = 137.8 -->
+            <circle cx="48" cy="48" r="34" fill="none" stroke="#1E293B" stroke-width="13"
+              stroke-dasharray="160.2 213.6" transform="rotate(135 48 48)" stroke-linecap="round"/>
+            <circle cx="48" cy="48" r="34" fill="none" stroke="url(#g-soh)" stroke-width="13"
+              stroke-dasharray="137.8 213.6" transform="rotate(135 48 48)" stroke-linecap="round"/>
+          </svg>
+          <div class="ring-val">
+            <span style="font-size:22px;font-weight:800;color:#F1F5F9;">86</span>
+            <span style="font-size:9px;font-weight:700;color:#10B981;letter-spacing:.05em;">%</span>
+          </div>
+        </div>
+        <div class="rbar-wrap" style="margin-top:3px;">
+          <div class="rbar-track"><div class="rbar-fill" style="width:86%;background:linear-gradient(90deg,#10B981,#34D399);"></div></div>
+          <div class="rbar-lbls"><span class="rl">0</span><span class="rl">100%</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!--
+      T8 — col 3, row 2
+      Type 4 — Status + Number — MOTOR CURRENT
+    -->
+    <div class="tile tt4">
+      <div class="tile-hdr">MOTOR CURRENT</div>
+      <span class="tile-id">T4</span>
+      <div class="tile-body" style="gap:8px;">
+        <div class="status-row">
+          <div class="sdot g"></div>
+          <span class="stxt" style="color:#10B981;">ON</span>
+        </div>
+        <div class="v-hero" style="font-size:38px;">124</div>
+        <div class="v-unit" style="color:#64748B;">Amps</div>
+      </div>
+    </div>
+
+    <!--
+      T9 — col 4, row 2
+      Type 5 — Hero Number — DTE RANGE
+    -->
+    <div class="tile tt5">
+      <div class="tile-hdr">DTE RANGE</div>
+      <span class="tile-id">T5</span>
+      <div class="tile-body">
+        <div class="v-hero">142</div>
+        <div class="v-unit" style="color:#A78BFA;">km</div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+    <!--
+      T10 — col 5, row 2
+      Type 5 — Hero Number — ODOMETER
+    -->
+    <div class="tile tt5">
+      <div class="tile-hdr">ODOMETER</div>
+      <span class="tile-id">T5</span>
+      <div class="tile-body">
+        <div class="v-hero" style="font-size:30px;">1,248</div>
+        <div class="v-unit" style="color:#A78BFA;">km</div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+    <!-- ══════════ ROW 3 + ROW 4 ══════════
+         BIG tile spans: col 1-2, row 3-4
+         Right side: T11-T13 (row 3), T14-T16 (row 4)
+    ══════════════════════════════════════ -->
+
+    <!--
+      BIG TILE — col 1-2, row 3-4 (2×2 merge)
+      Type 1 — Live Graph — MOTOR SPEED
+      Size: 386 × 386 px  (2×178 + 1×30 = 386 ✓)
+    -->
+    <div class="tile tile-big tt1">
+      <div class="cr tl"></div><div class="cr tr"></div>
+      <div class="cr bl"></div><div class="cr br"></div>
+      <div class="tile-hdr">MOTOR SPEED  —  Live Graph</div>
+      <span class="tile-id" style="font-size:8px;">T1 / MERGED 2×2</span>
+      <div class="big-graph-body">
+
+        <!-- Graph SVG — fills the wide/tall space -->
+        <svg width="354" height="210" viewBox="0 0 354 210">
+          <defs>
+            <linearGradient id="g-area-big" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="#0EA5E9" stop-opacity="0.22"/>
+              <stop offset="100%" stop-color="#0EA5E9" stop-opacity="0.01"/>
+            </linearGradient>
+          </defs>
+          <!-- Grid lines -->
+          <line x1="36" y1="4"   x2="354" y2="4"   stroke="#1E293B" stroke-width="1" stroke-dasharray="4,5"/>
+          <line x1="36" y1="56"  x2="354" y2="56"  stroke="#1E293B" stroke-width="1" stroke-dasharray="4,5"/>
+          <line x1="36" y1="108" x2="354" y2="108" stroke="#1E293B" stroke-width="1" stroke-dasharray="4,5"/>
+          <line x1="36" y1="160" x2="354" y2="160" stroke="#1E293B" stroke-width="1" stroke-dasharray="4,5"/>
+          <line x1="36" y1="210" x2="354" y2="210" stroke="#1E293B" stroke-width="1" stroke-dasharray="4,5"/>
+          <!-- Y-axis labels (0-4000 RPM) -->
+          <text x="32" y="8"   text-anchor="end" font-size="9" fill="#334155">4000</text>
+          <text x="32" y="60"  text-anchor="end" font-size="9" fill="#334155">3000</text>
+          <text x="32" y="112" text-anchor="end" font-size="9" fill="#334155">2000</text>
+          <text x="32" y="164" text-anchor="end" font-size="9" fill="#334155">1000</text>
+          <text x="32" y="214" text-anchor="end" font-size="9" fill="#334155">0</text>
+          <!-- Area fill -->
+          <path d="M38,195 C70,175 100,160 140,130 C180,100 210,90 250,75 C280,64 310,58 352,44 L352,210 L38,210 Z"
+            fill="url(#g-area-big)"/>
+          <!-- Line -->
+          <path d="M38,195 C70,175 100,160 140,130 C180,100 210,90 250,75 C280,64 310,58 352,44"
+            fill="none" stroke="#0EA5E9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Live dot -->
+          <circle cx="352" cy="44" r="7" fill="#0EA5E9" opacity="0.18"/>
+          <circle cx="352" cy="44" r="4" fill="#38BDF8"/>
+          <!-- Live badge -->
+          <rect x="316" y="26" width="36" height="18" rx="5" fill="#0EA5E9"/>
+          <text x="334" y="38" text-anchor="middle" font-size="10" font-weight="800" fill="white">3280</text>
+          <!-- X-axis labels -->
+          <text x="38"  y="224" text-anchor="middle" font-size="8" fill="#334155">-60s</text>
+          <text x="134" y="224" text-anchor="middle" font-size="8" fill="#334155">-45s</text>
+          <text x="230" y="224" text-anchor="middle" font-size="8" fill="#334155">-30s</text>
+          <text x="326" y="224" text-anchor="middle" font-size="8" fill="#334155">-15s</text>
+          <text x="354" y="224" text-anchor="end"    font-size="8" fill="#475569">now</text>
+        </svg>
+
+        <!-- Bottom stats + range bar -->
+        <div class="big-legend">
+          <div class="big-stat">
+            <div class="big-stat-val" style="color:#38BDF8;">3,280</div>
+            <div class="big-stat-unit">rpm</div>
+          </div>
+          <div style="display:flex;flex-direction:column;align-items:center;gap:3px;flex:1;margin:0 14px;">
+            <div class="big-rbar-wrap">
+              <div class="big-rbar-track"><div class="big-rbar-fill" style="width:82%;"></div></div>
+              <div class="big-rbar-lbls"><span class="rl">0 RPM</span><span class="rl">4000 RPM</span></div>
+            </div>
+          </div>
+          <div class="big-stat">
+            <div class="big-stat-val">4,000</div>
+            <div class="big-stat-unit">max rpm</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!--
+      T11 — col 3, row 3
+      Type 4 — Status + Number — MOTOR STATUS
+    -->
+    <div class="tile tt4" style="grid-column:3;grid-row:3;">
+      <div class="tile-hdr">MOTOR STATUS</div>
+      <span class="tile-id">T4</span>
+      <div class="tile-body" style="gap:7px;">
+        <div class="status-row">
+          <div class="sdot g"></div>
+          <span class="stxt" style="color:#10B981;">ON</span>
+        </div>
+        <div class="v-hero" style="font-size:30px;">3,200</div>
+        <div class="v-unit" style="color:#64748B;">RPM</div>
+      </div>
+    </div>
+
+    <!--
+      T12 — col 4, row 3
+      Type 5 — Hero Number — CHARGE CYCLES
+    -->
+    <div class="tile tt5" style="grid-column:4;grid-row:3;">
+      <div class="tile-hdr">CHARGE CYCLES</div>
+      <span class="tile-id">T5</span>
+      <div class="tile-body">
+        <div class="v-hero">156</div>
+        <div class="v-unit" style="color:#A78BFA;">Cycles</div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+    <!--
+      T13 — col 5, row 3
+      Type 3 — Progress Bar — REGEN POWER
+    -->
+    <div class="tile tt3" style="grid-column:5;grid-row:3;">
+      <div class="tile-hdr">REGEN POWER</div>
+      <span class="tile-id">T3</span>
+      <div class="tile-body" style="gap:6px;">
+        <div style="display:flex;align-items:baseline;gap:3px;">
+          <div class="v-hero" style="font-size:40px;">35</div>
+          <div class="v-unit" style="color:#F59E0B;font-size:12px;">%</div>
+        </div>
+        <div class="pbar-wrap">
+          <div class="pbar-track">
+            <div class="pbar-fill" style="width:35%;background:linear-gradient(90deg,#F59E0B,#FCD34D);"></div>
+          </div>
+        </div>
+        <div style="display:flex;justify-content:space-between;width:138px;">
+          <span class="rl">0</span><span class="rl">100%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════ ROW 4 (implicit — BIG tile lower half) ══════════ -->
+
+    <!--
+      T14 — col 3, row 4
+      Type 4 — Status + Number — BMS STATUS
+    -->
+    <div class="tile tt4" style="grid-column:3;grid-row:4;">
+      <div class="tile-hdr">BMS STATUS</div>
+      <span class="tile-id">T4</span>
+      <div class="tile-body" style="gap:7px;">
+        <div class="status-row">
+          <div class="sdot c"></div>
+          <span class="stxt" style="color:#0EA5E9;">ACTIVE</span>
+        </div>
+        <div class="v-hero" style="font-size:30px;">96.1</div>
+        <div class="v-unit" style="color:#64748B;">Volts</div>
+      </div>
+    </div>
+
+    <!--
+      T15 — col 4, row 4
+      Type 5 — Hero Number — MIN CELL VOLTAGE
+    -->
+    <div class="tile tt5" style="grid-column:4;grid-row:4;">
+      <div class="tile-hdr">MIN CELL V</div>
+      <span class="tile-id">T5</span>
+      <div class="tile-body">
+        <div class="v-hero" style="font-size:32px;">3.72</div>
+        <div class="v-unit" style="color:#A78BFA;">Volts</div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+    <!--
+      T16 — col 5, row 4
+      Type 5 — Hero Number — TRIP ENERGY
+    -->
+    <div class="tile tt5" style="grid-column:5;grid-row:4;">
+      <div class="tile-hdr">TRIP ENERGY</div>
+      <span class="tile-id">T5</span>
+      <div class="tile-body">
+        <div class="v-hero" style="font-size:32px;">8.4</div>
+        <div class="v-unit" style="color:#A78BFA;">kWh</div>
+        <div class="accent-line"></div>
+      </div>
+    </div>
+
+  </div><!-- end .tile-grid -->
+
+</div><!-- end .screen -->
+
+<!-- ── Spec annotations ── -->
+<div class="annotations">
+  <span>Screen: <strong>1024 px wide</strong></span>
+  <span>Tile: <strong>178 × 178 px</strong></span>
+  <span>Gap: <strong>30 px</strong></span>
+  <span>Pad: <strong>8 px all sides</strong></span>
+  <span>Grid: <strong>1010 × 802 px</strong></span>
+  <span>Big tile: <strong>386 × 386 px</strong></span>
+  <span>Rows: <strong>3 explicit + 1 implicit</strong></span>
+</div>
+
+<div class="spec-table">
+  <div class="spec-col">
+    <div class="spec-row"><span class="spec-key">grid-template-columns:</span><span class="spec-val">repeat(5, 178px)</span></div>
+    <div class="spec-row"><span class="spec-key">grid-template-rows:</span><span class="spec-val">repeat(3, 178px)</span></div>
+    <div class="spec-row"><span class="spec-key">grid-auto-rows:</span><span class="spec-val">178px</span></div>
+    <div class="spec-row"><span class="spec-key">gap:</span><span class="spec-val">30px</span></div>
+    <div class="spec-row"><span class="spec-key">padding:</span><span class="spec-val">8px (all sides)</span></div>
+  </div>
+  <div class="spec-col">
+    <div class="spec-row"><span class="spec-key">grid-column (BIG):</span><span class="spec-val">1 / span 2</span></div>
+    <div class="spec-row"><span class="spec-key">grid-row (BIG):</span><span class="spec-val">3 / span 2</span></div>
+    <div class="spec-row"><span class="spec-key">BIG tile width:</span><span class="spec-val">2×178 + 30 = </span><span class="spec-ok">386px ✓</span></div>
+    <div class="spec-row"><span class="spec-key">BIG tile height:</span><span class="spec-val">2×178 + 30 = </span><span class="spec-ok">386px ✓</span></div>
+    <div class="spec-row"><span class="spec-key">Grid width:</span><span class="spec-val">5×178 + 4×30 = 1010px </span><span class="spec-note">(+2px over 1008)</span></div>
+  </div>
+</div>
+
+</body>
+</html>
