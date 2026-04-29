@@ -11,6 +11,7 @@ import TileType4 from '../components/tiles/TileType4';
 import TileType5 from '../components/tiles/TileType5';
 import TileType6 from '../components/tiles/TileType6';
 import TileType7 from '../components/tiles/TileType7';
+import HeaderRideToggle from '../components/HeaderRideToggle';
 import tilesConfig from '../config/tilesConfig.json';
 import { useVehicleStore } from '../store/useVehicleStore';
 
@@ -52,9 +53,36 @@ export default function TilesEngine() {
   const [isStale, setIsStale] = useState(false);
   const lastUpdateRef = useRef(0);
 
-  // Initialize WebSocket on mount
+  // Time Sync Status
+  const [syncStatus, setSyncStatus] = useState('pending'); // 'pending', 'ok', 'error'
+
+  // Initialize WebSocket and Sync Time on mount
   useEffect(() => {
     initialize();
+    
+    // --- Silently sync phone clock to RPi on page load ---
+    const BACKEND_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
+    
+    fetch(`${BACKEND_URL}/api/sync-time`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ timestamp: Date.now() })
+    })
+    .then(r => r.json())
+    .then(d => {
+      if (d.status === 'ok') {
+        console.log('✅ RPi Time synced:', d.time_set || d.message);
+        setSyncStatus('ok');
+      } else {
+        console.warn('⚠️ RPi Time sync warning:', d.message);
+        setSyncStatus('error');
+      }
+    })
+    .catch(e => {
+      console.warn('⚠️ RPi Time sync failed (Network/CORS):', e);
+      setSyncStatus('error');
+    });
+
     return () => cleanup();
   }, []);
 
@@ -203,6 +231,19 @@ export default function TilesEngine() {
 
         {/* Right — Live indicator + clock */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <HeaderRideToggle />
+          
+          {/* Time Sync Status Indicator */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, opacity: 0.6 }}>
+             <div style={{ 
+               width: 4, height: 4, borderRadius: '50%', 
+               background: syncStatus === 'ok' ? '#00e87a' : (syncStatus === 'error' ? '#FF3B3B' : '#F59E0B') 
+             }} />
+             <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: 1, color: 'rgba(255,255,255,0.4)' }}>
+               {syncStatus === 'ok' ? 'TIME SYNCED' : (syncStatus === 'error' ? 'SYNC ERROR' : 'SYNCING...')}
+             </span>
+          </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div style={{ position: 'relative', width: 6, height: 6 }}>
               <div style={{

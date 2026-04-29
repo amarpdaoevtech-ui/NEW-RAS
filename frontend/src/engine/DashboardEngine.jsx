@@ -13,13 +13,11 @@
 //    Width:  5×200 + 4×6           = 1024 ✓
 //    Height: 44 + 4 + 172+6+172+6+172 + 4 + 20 = 600 ✓
 //
-//  5 × 3  GRID  (15 cells):
-//    Row 1 (cols 1-5)  : 5 regular tiles
-//    Rows 2-3 col 1-2  : 1 BIG tile (406 × 350, square-ish graph)
-//    Row 2  cols 3-5   : 3 regular tiles
-//    Row 3  cols 3-5   : 3 regular tiles
+//  7 × 4  GRID:
 // ─────────────────────────────────────────────────────────────────────────────
 
+import React, { useEffect, useState } from 'react';
+import { useVehicleStore } from '../store/useVehicleStore';
 import TileType6  from '../components/tiles/TileType6';
 import TileType4    from '../components/tiles/TileType4';
 import TileType2    from '../components/tiles/TileType2';
@@ -27,6 +25,7 @@ import TileType5   from '../components/tiles/TileType5';
 import TileType3   from '../components/tiles/TileType3';
 import TileType1 from '../components/tiles/TileType1';
 import TileType7 from '../components/tiles/TileType7';
+import HeaderRideToggle from '../components/HeaderRideToggle';
 
 // ── Layout numbers ────────────────────────────────────────────────────────────
 const W      = 1024;
@@ -75,6 +74,27 @@ const ANIM = `
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function DashboardEngine() {
+  const telemetry = useVehicleStore((state) => state.telemetry);
+  const connStatus = useVehicleStore((state) => state.connectionStatus);
+  const history = useVehicleStore((state) => state.history);
+
+  // Map mode string to state id for TileType6
+  let modeState = 4; // Default DRIVE
+  if (telemetry.mode === 'LOW' || telemetry.mode === 'PARK') modeState = 1;
+  else if (telemetry.mode === 'MED' || telemetry.mode === 'REVERSE') modeState = 2;
+  else if (telemetry.mode === 'HIGH' || telemetry.mode === 'NEUTRAL') modeState = 3;
+
+  // Map system status for cooling TileType7
+  const coolingState = telemetry.system_status === 'COOLING' ? 4 : 1;
+
+  // Prepare graph data for TileType5
+  const graphData = [
+    { id: '1', label: 'SPD', value: telemetry.speed_kmph,  unit: 'km/h', color: '#F59E0B', history: history.speed_kmph?.map(h => h.value) || [] },
+    { id: '2', label: 'VOLT', value: telemetry.voltage,  unit: 'V',    color: '#38BDF8', history: [telemetry.voltage] }, // mock history if unavailable
+    { id: '3', label: 'CURR', value: Math.abs(telemetry.current),  unit: 'A',    color: '#00FF7F', history: [Math.abs(telemetry.current)] },
+    { id: '4', label: 'TEMP', value: telemetry.temperature,  unit: '°C',   color: '#F43F5E', history: [telemetry.temperature] },
+  ];
+
   return (
     <div style={{
       width: W, height: H,
@@ -87,61 +107,69 @@ export default function DashboardEngine() {
       <style>{ANIM}</style>
 
       {/* ── HEADER ─────────────────────────────────── */}
-      <Header />
+      <Header telemetry={telemetry} connStatus={connStatus} />
 
       {/* ── TILE GRID BODY ─────────────────────────── */}
       <div style={{
         flex: 1, minHeight: 0,
-        padding: `${BPAD}px ${PADDING_SIDE}px`,
+        padding: \`\${BPAD}px \${PADDING_SIDE}px\`,
         display: 'grid',
-        gridTemplateColumns: `repeat(${COLS}, ${T_COL}px)`,
-        gridTemplateRows:    `repeat(${ROWS}, ${T_ROW}px)`,
+        gridTemplateColumns: \`repeat(\${COLS}, \${T_COL}px)\`,
+        gridTemplateRows:    \`repeat(\${ROWS}, \${T_ROW}px)\`,
         gap: GAP,
         boxSizing: 'border-box',
       }}>
 
         {/* Row 1 — 7 standard tiles ─────────────── */}
         <Cell col={1} row={1} w={T_COL} h={T_ROW}>
-          <TileType4   label="STATE OF CHARGE"    unit="%" value={78} color={C.green} />
+          <TileType4   label="STATE OF CHARGE"    unit="%" value={telemetry.soc} color={C.green} />
         </Cell>
         <Cell col={2} row={1} w={T_COL} h={T_ROW}>
-          <TileType2   label="THROTTLE"  unit="%" value={87} color={C.green} />
+          <TileType2   label="THROTTLE"  unit="%" value={telemetry.throttle} color={C.green} />
         </Cell>
         <Cell col={3} row={1} w={T_COL} h={T_ROW}>
-          <TileType1 label="DTE" unit="KM" value={114} color={C.amber} big />
+          <TileType1 label="DTE" unit="KM" value={telemetry.dte} color={C.amber} big />
         </Cell>
         <Cell col={4} row={1} w={T_COL} h={T_ROW}>
-          <TileType3  label="BATTERY TEMP"        unit="°C" value={41} />
+          <TileType3  label="BATTERY TEMP"        unit="°C" value={telemetry.temperature} />
         </Cell>
         <Cell col={5} row={1} w={T_COL} h={T_ROW}>
-          <TileType5  label="DRIVE MODE"          value="ECO" />
+          <TileType6  
+            label="DRIVE MODE"          
+            state={modeState}
+            state_1_label="LOW" state_2_label="MED" state_3_label="HIGH" state_4_label="DRIVE"
+          />
         </Cell>
         <Cell col={6} row={1} w={T_COL} h={T_ROW}>
-          <TileType1 label="INVERTER TEMP" unit="°C" value={38.4} color={C.amber} big />
+          <TileType1 label="INVERTER TEMP" unit="°C" value={telemetry.temperature2 || 38.4} color={C.amber} big />
         </Cell>
         <Cell col={7} row={1} w={T_COL} h={T_ROW}>
-          <TileType7 label="SYSTEM COOLING" isOn={true} color={C.blue} />
+          <TileType7 
+            label="SYS COOLING" 
+            state={coolingState}
+            state_1_label="IDLE" state_2_label="LOW" state_3_label="MED" state_4_label="MAX"
+          />
         </Cell>
 
         {/* Rows 2-3, Cols 1-2 — ONE BIG TILE ─────── */}
         <Cell col={1} row={2} spanW={2} spanH={2} w={BIG_W} h={BIG_H}>
-          <div style={{ width: 256, height: 256, margin: 'auto', display: 'flex' }}>
-            <TileType6 label="LIVE TELEMETRY STREAM" unit="RPM" value={4280} color={C.green} />
+          <div style={{ width: '100%', height: '100%', margin: 'auto', display: 'flex' }}>
+            <TileType5 label="LIVE TELEMETRY STREAM" data={graphData} />
           </div>
         </Cell>
 
         {/* Row 2, Cols 3-7 ────────────────────────── */}
         <Cell col={3} row={2} w={T_COL} h={T_ROW}>
-          <TileType4   label="STATE OF HEALTH"    unit="%" value={91} color={C.blue} />
+          <TileType4   label="STATE OF HEALTH"    unit="%" value={telemetry.soh} color={C.blue} />
         </Cell>
         <Cell col={4} row={2} w={T_COL} h={T_ROW}>
-          <TileType1 label="MOTOR POWER"       unit="W"  value={95}  color={C.red}  big />
+          <TileType1 label="MOTOR POWER"       unit="W"  value={telemetry.power}  color={C.red}  big />
         </Cell>
         <Cell col={5} row={2} w={T_COL} h={T_ROW}>
-          <TileType1 label="VOLTAGE"           unit="V"  value={72.4} color={C.amber} big />
+          <TileType1 label="VOLTAGE"           unit="V"  value={telemetry.voltage} color={C.amber} big />
         </Cell>
         <Cell col={6} row={2} w={T_COL} h={T_ROW}>
-          <TileType1 label="AUX VOLTAGE"       unit="V"  value={12.1} color={C.muted} big />
+          <TileType1 label="AUX VOLTAGE"       unit="V"  value={telemetry.pi_battery_percent || 12.1} color={C.muted} big />
         </Cell>
         <Cell col={7} row={2} w={T_COL} h={T_ROW}>
           <TileType1 label="CELL BALANCE"       unit="mV"  value={14} color={C.green} big />
@@ -149,30 +177,30 @@ export default function DashboardEngine() {
 
         {/* Row 3, Cols 3-7 ────────────────────────── */}
         <Cell col={3} row={3} w={T_COL} h={T_ROW}>
-          <TileType1 label="SPEED"             unit="KM/H" value={59}   color={C.green} big />
+          <TileType1 label="SPEED"             unit="KM/H" value={telemetry.speed_kmph}   color={C.green} big />
         </Cell>
         <Cell col={4} row={3} w={T_COL} h={T_ROW}>
-          <TileType1 label="CURRENT"           unit="A"    value={24.1} color={C.blue}  big />
+          <TileType1 label="CURRENT"           unit="A"    value={telemetry.current} color={C.blue}  big />
         </Cell>
         <Cell col={5} row={3} w={T_COL} h={T_ROW}>
-          <TileType1 label="ODOMETER"          unit="KM"   value={1906} color={C.purple} big />
+          <TileType1 label="ODOMETER"          unit="KM"   value={telemetry.total_distance} color={C.purple} big />
         </Cell>
         <Cell col={6} row={3} w={T_COL} h={T_ROW}>
-          <TileType1 label="MOTOR TEMP"        unit="°C"   value={62} color={C.red} big />
+          <TileType1 label="MOTOR TEMP"        unit="°C"   value={telemetry.temperature3 || 62} color={C.red} big />
         </Cell>
         <Cell col={7} row={3} w={T_COL} h={T_ROW}>
-          <TileType1 label="COOLANT"        unit="°C"   value={88} color={C.amber} big />
+          <TileType1 label="COOLANT"        unit="°C"   value={telemetry.temperature2 || 88} color={C.amber} big />
         </Cell>
         
         {/* Row 4, Cols 1-7 ────────────────────────── */}
         <Cell col={1} row={4} w={T_COL} h={T_ROW}>
-          <TileType1 label="PEAK KW"        unit="KW"   value={180} color={C.red} big />
+          <TileType1 label="PEAK KW"        unit="KW"   value={Math.max(0, telemetry.power / 1000).toFixed(1)} color={C.red} big />
         </Cell>
         <Cell col={2} row={4} w={T_COL} h={T_ROW}>
-          <TileType1 label="REGEN PWR"      unit="KW"   value={-40} color={C.green} big />
+          <TileType1 label="REGEN PWR"      unit="KW"   value={Math.min(0, telemetry.power / 1000).toFixed(1)} color={C.green} big />
         </Cell>
         <Cell col={3} row={4} w={T_COL} h={T_ROW}>
-          <TileType2 label="BRAKE PEDAL"    unit="%"    value={14}  color={C.blue} />
+          <TileType2 label="BRAKE PEDAL"    unit="%"    value={telemetry.brake_state === 'BRAKE ON' ? 100 : 0}  color={C.blue} />
         </Cell>
         <Cell col={4} row={4} w={T_COL} h={T_ROW}>
           <TileType4 label="EFFICIENCY"     unit="%"    value={94}  color={C.green} />
@@ -189,7 +217,7 @@ export default function DashboardEngine() {
       </div>
 
       {/* ── FOOTER ─────────────────────────────────── */}
-      <Footer />
+      <Footer connStatus={connStatus} />
     </div>
   );
 }
@@ -198,8 +226,8 @@ export default function DashboardEngine() {
 function Cell({ col, row, spanW = 1, spanH = 1, w, h, children }) {
   return (
     <div style={{
-      gridColumn: `${col} / span ${spanW}`,
-      gridRow:    `${row} / span ${spanH}`,
+      gridColumn: \`\${col} / span \${spanW}\`,
+      gridRow:    \`\${row} / span \${spanH}\`,
       width: w, height: h,
       overflow: 'hidden',
     }}>
@@ -209,58 +237,74 @@ function Cell({ col, row, spanW = 1, spanH = 1, w, h, children }) {
 }
 
 // ── Header ────────────────────────────────────────────────────────────────────
-function Header() {
+function Header({ telemetry, connStatus }) {
+  const isConnected = connStatus === 'CONNECTED';
+  const liveColor = isConnected ? C.green : C.red;
+  const [timeStr, setTimeStr] = useState(new Date().toLocaleTimeString('en-US', { hour12: false }));
+  
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeStr(new Date().toLocaleTimeString('en-US', { hour12: false }));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+  
   return (
     <div style={{
       height: HDR, flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 16px',
-      background: `linear-gradient(180deg, ${C.hdr} 0%, transparent 100%)`,
-      borderBottom: `1px solid ${C.border}`,
+      background: \`linear-gradient(180deg, \${C.hdr} 0%, transparent 100%)\`,
+      borderBottom: \`1px solid \${C.border}\`,
       boxSizing: 'border-box',
     }}>
       {/* Brand */}
       <div>
         <div style={{ fontSize: 15, fontWeight: 900, letterSpacing: '0.2em', color: C.green,
-          textShadow: `0 0 12px ${C.green}80`, fontFamily: 'Orbitron, monospace' }}>
+          textShadow: \`0 0 12px \${C.green}80\`, fontFamily: 'Orbitron, monospace' }}>
           EV TELEMETRY
         </div>
         <div style={{ fontSize: 6.5, letterSpacing: '0.24em', color: C.muted, marginTop: 1 }}>
-          RACING EDITION · DASHBOARD V3.0 · 11 ACTIVE TILES
+          RACING EDITION · DASHBOARD V3.0 · LIVE TELEMETRY
         </div>
       </div>
 
       {/* Quick stats */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 20 }}>
         {[
-          { v: '59',  u: 'KM/H',  c: C.green },
-          { v: '5%',  u: 'SOC %', c: C.red   },
-          { v: 'ECO', u: 'MODE',  c: C.green },
+          { v: Math.round(telemetry?.speed_kmph || 0).toString(),  u: 'KM/H',  c: C.green },
+          { v: Math.round(telemetry?.soc || 0) + '%',  u: 'SOC %', c: C.red   },
+          { v: telemetry?.mode || 'ECO', u: 'MODE',  c: C.green },
         ].map(({ v, u, c }, i) => (
           <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
             <span style={{ fontSize: 16, fontWeight: 900, color: c, letterSpacing: '0.06em',
-              textShadow: `0 0 8px ${c}90`, fontFamily: 'Orbitron, monospace' }}>{v}</span>
+              textShadow: \`0 0 8px \${c}90\`, fontFamily: 'Orbitron, monospace' }}>{v}</span>
             <span style={{ fontSize: 6, letterSpacing: '0.16em', color: C.muted }}>{u}</span>
           </div>
         ))}
       </div>
 
       {/* Time + Live */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <HeaderRideToggle />
         <span style={{ fontSize: 18, fontWeight: 700, color: '#E2E8F0',
-          letterSpacing: '0.06em', fontFamily: 'Orbitron, monospace' }}>14:20:52</span>
+          letterSpacing: '0.06em', fontFamily: 'Orbitron, monospace' }}>
+          {timeStr}
+        </span>
         <div style={{
           display: 'flex', alignItems: 'center', gap: 5,
           padding: '3px 9px', borderRadius: 20,
-          background: `${C.green}14`, border: `1px solid ${C.green}44`,
+          background: \`\${liveColor}14\`, border: \`1px solid \${liveColor}44\`,
         }}>
           <div style={{ position: 'relative', width: 7, height: 7 }}>
             <div style={{ position: 'absolute', inset: -2, borderRadius: '50%',
-              background: C.green, animation: 'pulse-ring 1.8s ease-out infinite', opacity: .5 }}/>
-            <div style={{ width: 7, height: 7, borderRadius: '50%', background: C.green,
-              boxShadow: `0 0 5px ${C.green}` }}/>
+              background: liveColor, animation: isConnected ? 'pulse-ring 1.8s ease-out infinite' : 'none', opacity: .5 }}/>
+            <div style={{ width: 7, height: 7, borderRadius: '50%', background: liveColor,
+              boxShadow: \`0 0 5px \${liveColor}\` }}/>
           </div>
-          <span style={{ fontSize: 7.5, fontWeight: 700, color: C.green, letterSpacing: '0.14em' }}>LIVE SIM</span>
+          <span style={{ fontSize: 7.5, fontWeight: 700, color: liveColor, letterSpacing: '0.14em' }}>
+            {isConnected ? 'LIVE BMS' : 'OFFLINE'}
+          </span>
         </div>
       </div>
     </div>
@@ -268,13 +312,13 @@ function Header() {
 }
 
 // ── Footer ────────────────────────────────────────────────────────────────────
-function Footer() {
+function Footer({ connStatus }) {
   return (
     <div style={{
       height: FTR, flexShrink: 0,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       padding: '0 16px',
-      borderTop: `1px solid ${C.border}`,
+      borderTop: \`1px solid \${C.border}\`,
       boxSizing: 'border-box',
     }}>
       <span style={{ fontSize: 6.5, letterSpacing: '0.18em', color: C.dim }}>
@@ -283,11 +327,11 @@ function Footer() {
       <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
         {[C.green, C.blue, C.amber, C.red].map((c, i) => (
           <div key={i} style={{ width: 5, height: 5, borderRadius: '50%',
-            background: c, boxShadow: `0 0 4px ${c}` }}/>
+            background: c, boxShadow: \`0 0 4px \${c}\`, opacity: connStatus === 'CONNECTED' ? 1 : 0.3 }}/>
         ))}
       </div>
       <span style={{ fontSize: 6.5, letterSpacing: '0.18em', color: C.dim }}>
-        20 FPS · WEBSOCKET SIM
+        20 FPS · {connStatus === 'CONNECTED' ? 'WEBSOCKET ACTIVE' : 'WEBSOCKET DISCONNECTED'}
       </span>
     </div>
   );
